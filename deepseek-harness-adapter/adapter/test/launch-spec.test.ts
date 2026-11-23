@@ -32,4 +32,18 @@ describe('buildLaunchSpec', () => {
         expect(spec.env.MCP_SEARCH_URL).toBe('http://mcp')
         delete process.env.SECRET_TOKEN
     })
+
+    it('MCP 凭证变量不进子进程，仅 MCP_*_URL 端点放行（BUG-02 回归）', () => {
+        process.env.MCP_AUTH_TOKEN = 'secret'
+        process.env.MCP_API_KEY = 'secret'
+        process.env.MCP_SEARCH_URL = 'http://mcp'
+        const spec = buildLaunchSpec(
+            { sessionId: 's', prompt: 'p', eventId: 'e', attempt: 1 }, '')
+        expect(spec.env.MCP_AUTH_TOKEN).toBeUndefined()
+        expect(spec.env.MCP_API_KEY).toBeUndefined()
+        expect(spec.env.MCP_SEARCH_URL).toBe('http://mcp')
+        delete process.env.MCP_AUTH_TOKEN
+        delete process.env.MCP_API_KEY
+        delete process.env.MCP_SEARCH_URL
+    })
 })
