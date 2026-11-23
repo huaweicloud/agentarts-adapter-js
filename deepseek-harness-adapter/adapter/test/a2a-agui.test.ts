@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Frame } from '@agentarts/harness-dsh-shared'
-import type { RoundHandle } from '../src/scheduler/run.js'
+import type { RoundHandle, RoundOutcome } from '../src/scheduler/run.js'
 import type { Scheduler } from '../src/scheduler/index.js'
 import { TaskRegistry, createA2AHandler } from '../src/handlers/a2a.js'
 import { createAguiHandler } from '../src/handlers/agui.js'
@@ -16,6 +16,7 @@ function fakeScheduler(frames: Frame[], ok: boolean, error: string | null = null
         outcome: Promise.resolve({
             ok, final: ok ? (finalFrame as any) : null, error, exitCode: ok ? 0 : 1,
         }),
+        cancel: () => {},
     }
     return { run: async () => handle } as unknown as Scheduler
 }
@@ -79,9 +80,50 @@ describe('createAguiHandler', () => {
 describe('TaskRegistry', () => {
     it('bind/lookup/unbind', () => {
         const r = new TaskRegistry()
-        r.bind('t', 's')
+        const owner = r.bind('t', 's', new AbortController())
         expect(r.lookup('t')).toBe('s')
-        r.unbind('t')
+        r.unbind('t', owner)
         expect(r.lookup('t')).toBeUndefined()
+    })
+
+    it('所有权校验：旧轮令牌删不掉新轮绑定（BUG-05 回归）', () => {
+        const r = new TaskRegistry()
+        const owner1 = r.bind('t', 's1', new AbortController())
+        const owner2 = r.bind('t', 's2', new AbortController())   // 重试轮覆盖绑定
+        r.unbind('t', owner1)              // 旧轮先结束，不得误删新绑定
+        expect(r.lookup('t')).toBe('s2')
+        r.unbind('t', owner2)
+        expect(r.lookup('t')).toBeUndefined()
+    })
+})
+
+describe('A2A 取消语义（BUG-06 验收③）', () => {
+    it('退订不取消任务；显式 registry.cancel 才 abort 轮次信号', async () => {
+        const registry = new TaskRegistry()
+        let seenSignal: AbortSignal | undefined
+        let resolveOutcome!: (o: RoundOutcome) => void
+        const hangHandle: RoundHandle = {
+            frames: (async function* () { yield finalFrame })(),
+            outcome: new Promise<RoundOutcome>((r) => { resolveOutcome = r }),
+            cancel: () => {},
+        }
+        const scheduler = {
+            run: async (_req: any, signal?: AbortSignal) => {
+                seenSignal = signal
+                return hangHandle
+            },
+        } as unknown as Scheduler
+        const gen = createA2AHandler(scheduler, registry)(a2aInput)
+        expect((await gen.next()).value).toEqual(finalFrame)
+        // 生成器此时挂在 await outcome；退订的 finally 要等生产端解除才执行
+        const returned = gen.return()
+        expect(seenSignal!.aborted).toBe(false)      // 退订不取消任务
+        expect(registry.cancel('t1')).toBe(true)     // 显式 CancelTask 入口
+        expect(seenSignal!.aborted).toBe(true)
+        resolveOutcome({
+            ok: false, final: null, error: 'round cancelled by consumer', exitCode: null,
+        })
+        await returned
+        expect(registry.lookup('t1')).toBeUndefined()
     })
 })

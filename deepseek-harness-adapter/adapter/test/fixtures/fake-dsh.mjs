@@ -1,13 +1,24 @@
 // 假 dsh 子进程：按 AGENTRUN_TEST_MODE 模拟各种一轮行为，帧走 stdout，诊断走 stderr。
 // 仅测试用，不是交付代码。
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 const mode = process.env.AGENTRUN_TEST_MODE ?? 'normal'
+const sessionId = process.env.AGENTRUN_DSH_SESSION_ID ?? 's'
+const eventId = process.env.AGENTRUN_EVENT_ID ?? 'e'
+
+// stubborn 模式：捕获并忽略 SIGTERM，验证取消的宽限后 SIGKILL 升级
+if (mode === 'stubborn') {
+    process.on('SIGTERM', () => { process.stderr.write('sigterm-ignored\n') })
+}
+
 let input = ''
 process.stdin.setEncoding('utf8')
 process.stdin.on('data', (c) => { input += c })
 process.stdin.on('end', async () => {
     const emit = (f) => process.stdout.write(JSON.stringify(f) + '\n')
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-    emit({ type: 'session', sessionId: process.env.AGENTRUN_DSH_SESSION_ID ?? 's', cwd: '/tmp' })
+    emit({ type: 'session', sessionId, cwd: '/tmp' })
     if (mode === 'garbage') {
         process.stdout.write('{not json\n')
         await sleep(5000)   // 等被 kill
@@ -16,7 +27,8 @@ process.stdin.on('end', async () => {
     emit({ type: 'status', phase: 'turn_start' })
     if (mode === 'slow') await sleep(150)
     emit({ type: 'delta', kind: 'text', text: `echo:${input}`, attemptId: 'a1', revision: 0 })
-    if (mode === 'hang') { await sleep(60000); return }
+    // hang/stubborn：长时间挂起（计时器保持事件循环存活），等超时或取消来终止
+    if (mode === 'hang' || mode === 'stubborn') { await sleep(3600_000); return }
     if (mode === 'fail') {
         process.stderr.write('model exploded\n')
         emit({ type: 'error', message: 'model exploded' })
@@ -26,7 +38,13 @@ process.stdin.on('end', async () => {
         return
     }
     if (mode === 'nofinal') return
-    emit({ type: 'final', text: `echo:${input}`, reason: { kind: 'completed' },
-        sessionId: process.env.AGENTRUN_DSH_SESSION_ID ?? 's' })
-    // 同上：自然退出（exitCode 默认 0），避免 final 帧被截断
+    emit({ type: 'final', text: `echo:${input}`, reason: { kind: 'completed' }, sessionId })
+    // 模拟 driver 的 flush：final 之后、退出之前落盘（BUG-06 验收②）
+    if (process.env.AGENTRUN_TEST_FLUSH_DIR) {
+        writeFileSync(
+            join(process.env.AGENTRUN_TEST_FLUSH_DIR, `flush-${sessionId}-${eventId}.json`),
+            JSON.stringify({ text: `echo:${input}` }),
+        )
+    }
+    // 自然退出（exitCode 默认 0），避免 final 帧被截断
 })

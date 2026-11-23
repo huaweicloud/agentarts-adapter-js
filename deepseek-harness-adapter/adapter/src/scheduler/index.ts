@@ -1,5 +1,5 @@
 import type { RoundHandle } from './run.js'
-import { runRound } from './run.js'
+import { cancelledHandle, runRound } from './run.js'
 import { SessionQueue } from './session-queue.js'
 import type { SchedulerDeps } from '../types.js'
 import type { RoundRequest } from '@agentarts/harness-dsh-shared'
@@ -13,9 +13,14 @@ export class Scheduler {
 
     constructor(private deps: SchedulerDeps) {}
 
-    run(req: RoundRequest): Promise<RoundHandle> {
+    run(req: RoundRequest, signal?: AbortSignal): Promise<RoundHandle> {
         return new Promise<RoundHandle>((resolve, reject) => {
             void this.queue.enqueue(req.sessionId, async () => {
+                // 排队期间被取消：跳过 recall/launchSpec/spawn（BUG-06）
+                if (signal?.aborted) {
+                    resolve(cancelledHandle('round cancelled before spawn'))
+                    return
+                }
                 // 召回失败降级为空（spec §2.2 第 3 步），不阻塞执行
                 let recallResult = ''
                 try {
@@ -24,7 +29,8 @@ export class Scheduler {
                     recallResult = ''
                 }
                 const spec = await this.deps.launchSpec(req, recallResult)
-                const handle = runRound(spec, req.prompt, this.deps.timeoutMs)
+                // spawn 前由 runRound 再检查一次 signal（覆盖 recall/launchSpec 期间取消）
+                const handle = runRound(spec, req.prompt, this.deps.timeoutMs, signal)
                 // 先把 handle 交给调用方（A 要边跑边消费帧流）……
                 resolve(handle)
                 // ……但队列名额必须等本轮结束才释放，否则同会话会并行两个子进程

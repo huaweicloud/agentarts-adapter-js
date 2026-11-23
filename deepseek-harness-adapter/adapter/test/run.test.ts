@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { Frame, LaunchSpec } from '@agentarts/harness-dsh-shared'
-import { runRound } from '../src/scheduler/run.js'
+import { runRound, CANCEL_GRACE_MS } from '../src/scheduler/run.js'
 
 const fixture = fileURLToPath(new URL('./fixtures/fake-dsh.mjs', import.meta.url))
 
@@ -88,5 +88,54 @@ describe('runRound', () => {
         const outcome = await handle.outcome
         expect(frames).toHaveLength(1)
         expect(outcome.ok).toBe(true)
+    })
+
+    it('spawn 前已取消：不启动子进程，直接 cancelled 结算（BUG-06）', async () => {
+        const ac = new AbortController()
+        ac.abort()
+        const handle = runRound(spec('normal'), 'x', 5000, ac.signal)
+        const frames = await collect(handle.frames)
+        const outcome = await handle.outcome
+        expect(frames).toHaveLength(0)
+        expect(outcome.ok).toBe(false)
+        expect(outcome.error).toContain('cancelled before spawn')
+    })
+
+    it('执行中取消：以 cancelled 结算且帧流终止（BUG-06）', async () => {
+        const handle = runRound(spec('hang'), 'x', 60000)
+        const iter = handle.frames[Symbol.asyncIterator]()
+        const first = await iter.next()   // 等首帧真实到达，不猜启动耗时
+        expect(first.done).toBe(false)
+        handle.cancel()
+        // 排空剩余帧：channel 在子进程 close 后终止，迭代必然结束
+        for (let r = await iter.next(); !r.done; r = await iter.next()) { /* drain */ }
+        const outcome = await handle.outcome
+        expect(outcome.ok).toBe(false)
+        expect(outcome.error).toContain('cancelled')
+    })
+
+    it('结束后取消为 no-op（幂等）', async () => {
+        const handle = runRound(spec('normal'), 'x')
+        await collect(handle.frames)
+        const outcome = await handle.outcome
+        expect(outcome.ok).toBe(true)
+        handle.cancel()
+        expect((await handle.outcome).ok).toBe(true)
+    })
+
+    it('stubborn 轮忽略 SIGTERM：宽限后 SIGKILL 升级仍 cancelled（BUG-06）', async () => {
+        const handle = runRound(spec('stubborn'), 'x', 60000)
+        const iter = handle.frames[Symbol.asyncIterator]()
+        await iter.next()   // 等首帧真实到达
+        const t0 = Date.now()
+        handle.cancel()
+        const outcome = await handle.outcome
+        for (let r = await iter.next(); !r.done; r = await iter.next()) { /* drain */ }
+        expect(outcome.ok).toBe(false)
+        expect(outcome.error).toContain('cancelled')
+        // Windows 上 SIGTERM 直接终止进程（无宽限升级可观测），仅 POSIX 断言宽限耗时
+        if (process.platform !== 'win32') {
+            expect(Date.now() - t0).toBeGreaterThanOrEqual(CANCEL_GRACE_MS - 100)
+        }
     })
 })
