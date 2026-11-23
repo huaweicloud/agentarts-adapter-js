@@ -20,10 +20,13 @@ process.stdin.on('end', async () => {
     if (mode === 'fail') {
         process.stderr.write('model exploded\n')
         emit({ type: 'error', message: 'model exploded' })
-        process.exit(1)
+        // 不用 process.exit()：它会截断未刷出的管道写入，偶发丢帧；
+        // 设 exitCode 后自然退出，事件循环排空时 stdout 保证刷出
+        process.exitCode = 1
+        return
     }
-    if (mode === 'nofinal') process.exit(0)
+    if (mode === 'nofinal') return
     emit({ type: 'final', text: `echo:${input}`, reason: { kind: 'completed' },
         sessionId: process.env.AGENTRUN_DSH_SESSION_ID ?? 's' })
-    process.exit(0)
+    // 同上：自然退出（exitCode 默认 0），避免 final 帧被截断
 })

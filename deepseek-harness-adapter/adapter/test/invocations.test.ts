@@ -36,9 +36,10 @@ describe('POST /invocations（真 SDK app + 假子进程）', () => {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ sessionId: 's1', prompt: 'hello', eventId: 'e1', attempt: 1 }),
         })
-        expect(res.status).toBe(200)
+        const body = await res.text()
+        expect(res.status, `响应体: ${body}`).toBe(200)
         expect(res.headers.get(SESSION_HEADER)).toBe('s1')
-        expect(await res.json()).toEqual({ result: 'echo:hello', sessionId: 's1' })
+        expect(JSON.parse(body)).toEqual({ result: 'echo:hello', sessionId: 's1' })
     })
 
     it('子进程失败：500 且带错误信息', async () => {
