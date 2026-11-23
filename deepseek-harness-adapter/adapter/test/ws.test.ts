@@ -117,4 +117,25 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         await closed   // receiveJson 抛 SyntaxError → 非 Disconnect → 上抛 → SDK 关连接
         expect(ws.readyState).toBe(WebSocket.CLOSED)
     })
+
+    it('升级头 sessionId 作缺省回退，payload 优先（BUG-03 回归）', async () => {
+        const seen: string[] = []
+        const scheduler = new Scheduler({
+            launchSpec: (req) => { seen.push(req.sessionId); return fakeSpec() },
+        })
+        const app = createApp(scheduler)
+        server = app.run('127.0.0.1', 0)
+        await new Promise((r) => server!.once('listening', r))
+        const url = `ws://127.0.0.1:${(server!.address() as AddressInfo).port}/ws`
+        const ws = new WebSocket(url, { headers: { 'x-hw-agentarts-session-id': 'hdr-s1' } })
+        await new Promise((r) => ws.once('open', r))
+        const r1 = collectRound(ws)
+        ws.send(JSON.stringify({ prompt: 'first' }))
+        await r1
+        const r2 = collectRound(ws)
+        ws.send(JSON.stringify({ sessionId: 'payload-s', prompt: 'second' }))
+        await r2
+        expect(seen).toEqual(['hdr-s1', 'payload-s'])
+        ws.close()
+    })
 })

@@ -9,7 +9,7 @@ import { normalizeRequest } from '../request.js'
  * 对端断开静默退出。与 /ping 分离，长连接不影响探活。
  */
 export function createWsHandler(scheduler: Scheduler) {
-    return async (ws: WebSocketConnection, _ctx: RequestContext): Promise<void> => {
+    return async (ws: WebSocketConnection, ctx: RequestContext): Promise<void> => {
         while (!ws.closed) {
             let payload: any
             try {
@@ -20,7 +20,8 @@ export function createWsHandler(scheduler: Scheduler) {
             }
             let req
             try {
-                req = normalizeRequest(payload)
+                // sessionId 优先级：payload > 升级请求头 > 生成（BUG-03，与 invocations 对齐）
+                req = normalizeRequest(payload, ctx.sessionId)
             } catch (err) {
                 await ws.sendJson({ type: 'error', message: (err as Error).message })
                 continue
