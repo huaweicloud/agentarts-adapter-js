@@ -2,3 +2,5 @@ node_modules/
 *.log
 nohup.out
 .claude/
+dist/
+coverage/
