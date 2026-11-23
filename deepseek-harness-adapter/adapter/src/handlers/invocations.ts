@@ -16,7 +16,12 @@ export function createInvocationHandler(scheduler: Scheduler) {
             return new JsonResponse({ statusCode: 400, content: { error: (err as Error).message } })
         }
         const handle = await scheduler.run(req)
+        // 并发排空帧流：只要 final，但必须消费，否则整轮帧无界缓存（BUG-07）
+        const drained = (async () => {
+            for await (const _frame of handle.frames) { /* 丢弃非 final 帧 */ }
+        })()
         const outcome = await handle.outcome
+        await drained
         const headers = { [SESSION_HEADER]: req.sessionId }
         if (!outcome.ok || !outcome.final) {
             return new JsonResponse({
