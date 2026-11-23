@@ -7,10 +7,15 @@ import { createWsHandler } from './handlers/ws.js'
 import { registerProtocolFaces } from './handlers/register.js'
 import { TaskRegistry } from './handlers/a2a.js'
 
+/** 解析并发上限 env：非法值（NaN/0/负数/非整数）回退 15，避免限流静默失效（BUG-04） */
+export function parseMaxConcurrency(raw: string | undefined): number {
+    const n = Number(raw)
+    return Number.isInteger(n) && n > 0 ? n : 15
+}
+
 /** 装配 SDK app（spec §5.2：main 只做装配）。a2a/agui 守卫注册，SDK 交付后自动生效。 */
 export function createApp(scheduler: Scheduler, maxConcurrency?: number): AgentArtsRuntimeApp {
-    const limit = maxConcurrency
-        ?? Number.parseInt(process.env.AGENTRUN_MAX_CONCURRENCY ?? '15', 10)
+    const limit = maxConcurrency ?? parseMaxConcurrency(process.env.AGENTRUN_MAX_CONCURRENCY)
     const app = new AgentArtsRuntimeApp({ maxConcurrency: limit })
     app.entrypoint(createInvocationHandler(scheduler))
     app.websocket(createWsHandler(scheduler))
