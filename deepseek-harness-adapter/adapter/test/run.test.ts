@@ -1,25 +1,10 @@
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { Frame, LaunchSpec } from '@agentarts/harness-dsh-shared'
+import type { LaunchSpec } from '@agentarts/harness-dsh-shared'
 import { runRound, CANCEL_GRACE_MS } from '../src/scheduler/run.js'
+import { collect, fakeSpec } from './helpers.js'
 
-const fixture = fileURLToPath(new URL('./fixtures/fake-dsh.mjs', import.meta.url))
-
-function spec(mode: string, sessionId = 's1'): LaunchSpec {
-    return {
-        command: process.execPath,
-        args: [fixture],
-        env: { ...process.env, AGENTRUN_TEST_MODE: mode, AGENTRUN_DSH_SESSION_ID: sessionId } as
-            Record<string, string>,
-        encodeStdin: (t) => t,
-    }
-}
-
-async function collect(frames: AsyncIterable<Frame>): Promise<Frame[]> {
-    const out: Frame[] = []
-    for await (const f of frames) out.push(f)
-    return out
-}
+const spec = (mode: string, sessionId = 's1') =>
+    fakeSpec(mode, { AGENTRUN_DSH_SESSION_ID: sessionId })
 
 describe('runRound', () => {
     it('正常一轮：帧序完整，outcome.ok，final 正确', async () => {

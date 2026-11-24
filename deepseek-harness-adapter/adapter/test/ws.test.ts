@@ -1,30 +1,22 @@
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import WebSocket from 'ws'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { LaunchSpec } from '@agentarts/harness-dsh-shared'
 import { Scheduler } from '../src/scheduler/index.js'
 import type { RoundHandle } from '../src/scheduler/run.js'
 import { createApp } from '../src/main.js'
-
-const fixture = fileURLToPath(new URL('./fixtures/fake-dsh.mjs', import.meta.url))
-const fakeSpec = (mode = 'normal'): LaunchSpec => ({
-    command: process.execPath,
-    args: [fixture],
-    env: { ...process.env, AGENTRUN_TEST_MODE: mode } as Record<string, string>,
-    encodeStdin: (t) => t,
-})
+import { fakeSpec, listen as startApp } from './helpers.js'
 
 let server: Server | null = null
+async function listen(app: ReturnType<typeof createApp>): Promise<string> {
+    const started = await startApp(app)
+    server = started.server
+    return `ws://${started.base}/ws`
+}
 async function start(mode = 'normal'): Promise<string> {
-    const app = createApp(new Scheduler({ launchSpec: () => fakeSpec(mode) }))
-    server = app.run('127.0.0.1', 0)
-    await new Promise((r) => server!.once('listening', r))
-    return `ws://127.0.0.1:${(server!.address() as AddressInfo).port}/ws`
+    return listen(createApp(new Scheduler({ launchSpec: () => fakeSpec(mode) })))
 }
 afterEach(async () => {
     // server 为 null 时直接跳过（BUG-09：可选链短路会使 Promise 永不 resolve）
@@ -65,12 +57,6 @@ function spyScheduler() {
         return p
     }
     return { scheduler, spawned, handles }
-}
-
-async function listen(app: ReturnType<typeof createApp>): Promise<string> {
-    server = app.run('127.0.0.1', 0)
-    await new Promise((r) => server!.once('listening', r))
-    return `ws://127.0.0.1:${(server!.address() as AddressInfo).port}/ws`
 }
 
 describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
@@ -236,15 +222,10 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
     it('收到 final 后立即关闭：flush 已完成（BUG-06 验收②）', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'dsh-flush-'))
         const scheduler = new Scheduler({
-            launchSpec: (req) => ({
-                ...fakeSpec(),
-                env: {
-                    ...process.env,
-                    AGENTRUN_TEST_MODE: 'normal',
-                    AGENTRUN_TEST_FLUSH_DIR: dir,
-                    AGENTRUN_DSH_SESSION_ID: req.sessionId,
-                    AGENTRUN_EVENT_ID: req.eventId,
-                } as Record<string, string>,
+            launchSpec: (req) => fakeSpec('normal', {
+                AGENTRUN_TEST_FLUSH_DIR: dir,
+                AGENTRUN_DSH_SESSION_ID: req.sessionId,
+                AGENTRUN_EVENT_ID: req.eventId,
             }),
         })
         const url = await listen(createApp(scheduler))

@@ -4,6 +4,7 @@ import type { RoundHandle, RoundOutcome } from '../src/scheduler/run.js'
 import type { Scheduler } from '../src/scheduler/index.js'
 import { TaskRegistry, createA2AHandler } from '../src/handlers/a2a.js'
 import { createAguiHandler } from '../src/handlers/agui.js'
+import { collect } from './helpers.js'
 
 const finalFrame: Frame = {
     type: 'final', text: 'ok', reason: { kind: 'completed' }, sessionId: 's1',
@@ -19,12 +20,6 @@ function fakeScheduler(frames: Frame[], ok: boolean, error: string | null = null
         cancel: () => {},
     }
     return { run: async () => handle } as unknown as Scheduler
-}
-
-async function collect(it: AsyncIterable<Frame>): Promise<Frame[]> {
-    const out: Frame[] = []
-    for await (const f of it) out.push(f)
-    return out
 }
 
 const a2aInput = { taskId: 't1', sessionId: 's1', prompt: 'p', eventId: 'e1', attempt: 1 }

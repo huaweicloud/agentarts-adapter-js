@@ -1,18 +1,12 @@
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import type { LaunchSpec, RoundRequest } from '@agentarts/harness-dsh-shared'
+import type { RoundRequest } from '@agentarts/harness-dsh-shared'
 import { Scheduler } from '../src/scheduler/index.js'
+import { fakeSpec as makeSpec } from './helpers.js'
 
-const fixture = fileURLToPath(new URL('./fixtures/fake-dsh.mjs', import.meta.url))
 const req = (sessionId: string, prompt = 'hi'): RoundRequest => ({
     sessionId, prompt, eventId: `e-${prompt}`, attempt: 1,
 })
-const fakeSpec = (env: Record<string, string> = {}): LaunchSpec => ({
-    command: process.execPath,
-    args: [fixture],
-    env: { ...process.env, AGENTRUN_TEST_MODE: 'normal', ...env } as Record<string, string>,
-    encodeStdin: (t) => t,
-})
+const fakeSpec = (env: Record<string, string> = {}) => makeSpec('normal', env)
 
 describe('Scheduler', () => {
     it('跑通一轮并把 recall 结果传给 launchSpec', async () => {
