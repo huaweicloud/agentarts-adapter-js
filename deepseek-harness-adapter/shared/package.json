@@ -1,0 +1,23 @@
+{
+  "name": "@agentarts/shared",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Shared types and utilities for the AgentArts harness adapter",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node ../scripts/clean.mjs"
+  }
+}

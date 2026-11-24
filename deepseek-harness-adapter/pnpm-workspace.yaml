@@ -1,0 +1,9 @@
+packages:
+  - 'shared'
+  - 'helper'
+  - 'adapter'
+  - 'plugin'
+  - 'precheck'
+
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,21 @@
+# AgentRun compatibility profile: official headless runner and local stores remain enabled.
+# Only PTC/workflow execution is disabled in this milestone.
+- id: ptc-runtime
+  disabled: true
+- id: workflow-ptc
+  disabled: true
+- id: tool-workflow
+  disabled: true
+
+- id: agent-default-model
+  config:
+    provider: {{MODEL_PROVIDER}}
+    model: {{MODEL_NAME}}
+
+{{MODEL_PROVIDERS}}
+
+{{SYSTEM_PROMPT_ROW}}
+
+{{SKILL_ROW}}
+
+{{MCP_SERVERS}}

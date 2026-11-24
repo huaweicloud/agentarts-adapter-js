@@ -7,32 +7,27 @@ on:
 permissions:
   contents: read
 jobs:
-  lint:
+  js:
+    name: JS build & test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deepseek-harness-adapter
     steps:
       - uses: actions/checkout@v4
-      - name: Run linter
-        run: |
-          echo "Running lint checks..."
-          # Python: pip install ruff && ruff check .
-          # JS: npx eslint .
-          # Go: golangci-lint run .
-  test:
-    needs: lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run tests
-        run: |
-          echo "Running tests..."
-          # Python: pip install pytest && pytest
-          # JS: npm test
-          # Go: go test ./...
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: deepseek-harness-adapter/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
       - name: Build
-        run: |
-          echo "Build successful"
+        run: pnpm build
+      - name: Test
+        run: pnpm test
