@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline'
 import {
     parseFrame, type Frame, type FinalFrame, type ErrorFrame, type LaunchSpec,
 } from '@agentarts/harness-dsh-shared'
+import { createFrameChannel } from './frame-channel.js'
 
 /** 一轮超时默认值（spec §7 第 8 项待与平台对齐，先按 5 分钟） */
 export const DEFAULT_ROUND_TIMEOUT_MS = 300_000
@@ -25,28 +26,6 @@ export interface RoundHandle {
     cancel(): void
 }
 
-/** 简易帧通道：生产端 push/end，消费端异步迭代（单消费者，无背压需求——帧量小） */
-function createFrameChannel() {
-    const queue: Frame[] = []
-    let notify: (() => void) | null = null
-    let ended = false
-    return {
-        push(frame: Frame) { queue.push(frame); notify?.() },
-        end() { ended = true; notify?.() },
-        frames: {
-            async *[Symbol.asyncIterator]() {
-                while (true) {
-                    while (queue.length > 0) yield queue.shift()!
-                    if (ended) return
-                    // 检查与注册在同一同步段内完成，不会丢失唤醒
-                    await new Promise<void>((resolve) => { notify = resolve })
-                    notify = null
-                }
-            },
-        } as AsyncIterable<Frame>,
-    }
-}
-
 /** 从未 spawn 的轮次（排队期间/ spawn 前被取消）：空帧流 + 已结算 outcome */
 export function cancelledHandle(error: string): RoundHandle {
     return {
@@ -67,7 +46,6 @@ export function runRound(
     // spawn 前已取消：不启动子进程
     if (signal?.aborted) return cancelledHandle('round cancelled before spawn')
 
-    const channel = createFrameChannel()
     let final: FinalFrame | null = null
     let errorFrame: ErrorFrame | null = null
     let stderrTail = ''
@@ -76,6 +54,12 @@ export function runRound(
 
     const child = spawn(spec.command, spec.args, {
         env: spec.env, stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    // 字节水位背压（BUG-11）：慢消费者使队列超高水位 → 暂停子进程 stdout，
+    // 管道写满后 driver 自然阻塞；消费回落到低水位 → 恢复
+    const channel = createFrameChannel({
+        onPause: () => child.stdout.pause(),
+        onResume: () => child.stdout.resume(),
     })
     let graceTimer: NodeJS.Timeout | null = null
 
@@ -112,7 +96,7 @@ export function runRound(
                 // 终态帧暂存校验，不进帧流；退出后由 outcome 统一给出唯一终态（BUG-08）
                 if (r.frame.type === 'final') { final ??= r.frame; return }
                 if (r.frame.type === 'error') { errorFrame ??= r.frame; return }
-                channel.push(r.frame)
+                channel.push(r.frame, Buffer.byteLength(line))
             } else if (r.reason === 'invalid') {
                 // 协议被破坏：立即判失败并终止子进程
                 failReason ??= `invalid frame line: ${line.slice(0, 200)}`

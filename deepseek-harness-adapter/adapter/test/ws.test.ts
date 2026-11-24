@@ -238,4 +238,34 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         ws.close()   // 收到成功终态立即关闭
         expect(existsSync(join(dir, 'flush-s1-e1.json'))).toBe(true)
     })
+
+    it('ws 慢消费者：背压生效，恢复后 3000 帧不丢（BUG-11）', async () => {
+        const url = await start('flood')
+        const ws = new WebSocket(url)
+        await new Promise((r) => ws.once('open', r))
+        const frames: any[] = []
+        let paused = false
+        const done = new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('flood timeout')), 15000)
+            ws.on('message', (d) => {
+                frames.push(JSON.parse(String(d)))
+                // 收到 100 帧后暂停底层 socket 300ms，模拟慢消费者（TCP 接收停摆）
+                if (!paused && frames.length === 100) {
+                    paused = true
+                    ;(ws as any)._socket.pause()
+                    setTimeout(() => (ws as any)._socket.resume(), 300)
+                }
+                const f = frames.at(-1)
+                if (f.type === 'final' || f.type === 'error') {
+                    clearTimeout(timer)
+                    resolve()
+                }
+            })
+        })
+        ws.send(JSON.stringify({ prompt: 'x' }))
+        await done
+        expect(frames.filter((f) => f.type === 'delta')).toHaveLength(3000)
+        expect(frames.at(-1).type).toBe('final')
+        ws.close()
+    })
 })

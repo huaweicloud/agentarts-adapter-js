@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { LaunchSpec } from '@agentarts/harness-dsh-shared'
+import type { Frame, LaunchSpec } from '@agentarts/harness-dsh-shared'
 import { runRound, CANCEL_GRACE_MS } from '../src/scheduler/run.js'
 import { collect, fakeSpec } from './helpers.js'
 
@@ -144,5 +144,19 @@ describe('runRound', () => {
         if (process.platform !== 'win32') {
             expect(Date.now() - t0).toBeGreaterThanOrEqual(CANCEL_GRACE_MS - 100)
         }
+    })
+
+    it('flood + 慢消费者：背压限流，3000 帧不丢（BUG-11）', async () => {
+        const handle = runRound(spec('flood'), 'x', 30000)
+        const frames: Frame[] = []
+        let n = 0
+        for await (const f of handle.frames) {
+            frames.push(f)
+            n += 1
+            if (n % 500 === 0) await new Promise((r) => setTimeout(r, 5))   // 慢消费
+        }
+        const outcome = await handle.outcome
+        expect(outcome.ok).toBe(true)
+        expect(frames.filter((f) => f.type === 'delta')).toHaveLength(3000)
     })
 })

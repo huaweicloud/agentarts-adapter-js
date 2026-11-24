@@ -25,6 +25,17 @@ process.stdin.on('end', async () => {
         return
     }
     emit({ type: 'status', phase: 'turn_start' })
+    // flood：快速吐 3000 个 delta，尊重 stdout 背压（写满等 drain），验证慢消费者限流
+    if (mode === 'flood') {
+        for (let i = 0; i < 3000; i++) {
+            const ok = process.stdout.write(JSON.stringify({
+                type: 'delta', kind: 'text', text: `t${i}`, attemptId: 'a1', revision: i,
+            }) + '\n')
+            if (!ok) await new Promise((r) => process.stdout.once('drain', r))
+        }
+        emit({ type: 'final', text: 'flood-done', reason: { kind: 'completed' }, sessionId })
+        return
+    }
     if (mode === 'slow') await sleep(150)
     emit({ type: 'delta', kind: 'text', text: `echo:${input}`, attemptId: 'a1', revision: 0 })
     // final 后 flush 失败：先写 final 再以 1 退出（BUG-08 第一种情况）
