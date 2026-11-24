@@ -35,7 +35,20 @@ const FRAME_TYPES = new Set([
     'session', 'status', 'delta', 'tool_call', 'tool_result', 'question', 'final', 'error',
 ])
 
-/** 解析一行 NDJSON。只校验 type 合法——字段级校验由产帧方（driver）负责。 */
+/** 终态帧严格校验（BUG-08）：裸 final / 缺字段一律 invalid，防止"成功但无结果" */
+function validTerminal(value: Record<string, unknown>): boolean {
+    if (value.type === 'final') {
+        const reason = value.reason as { kind?: unknown } | null | undefined
+        return typeof value.text === 'string'
+            && typeof value.sessionId === 'string'
+            && typeof reason === 'object' && reason !== null
+            && typeof reason.kind === 'string'
+    }
+    if (value.type === 'error') return typeof value.message === 'string'
+    return true
+}
+
+/** 解析一行 NDJSON。终态帧校验必需字段；其余帧只校验 type（字段级由产帧方负责）。 */
 export function parseFrame(line: string): ParseResult {
     if (line.trim() === '') return { ok: false, reason: 'empty', line }
     let value: unknown
@@ -47,6 +60,9 @@ export function parseFrame(line: string): ParseResult {
     if (typeof value !== 'object' || value === null) return { ok: false, reason: 'invalid', line }
     const type = (value as { type?: unknown }).type
     if (typeof type !== 'string' || !FRAME_TYPES.has(type)) {
+        return { ok: false, reason: 'invalid', line }
+    }
+    if (!validTerminal(value as Record<string, unknown>)) {
         return { ok: false, reason: 'invalid', line }
     }
     return { ok: true, frame: value as Frame }

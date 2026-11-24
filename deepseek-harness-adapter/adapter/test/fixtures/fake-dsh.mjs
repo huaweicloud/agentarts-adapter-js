@@ -27,6 +27,18 @@ process.stdin.on('end', async () => {
     emit({ type: 'status', phase: 'turn_start' })
     if (mode === 'slow') await sleep(150)
     emit({ type: 'delta', kind: 'text', text: `echo:${input}`, attemptId: 'a1', revision: 0 })
+    // final 后 flush 失败：先写 final 再以 1 退出（BUG-08 第一种情况）
+    if (mode === 'final-then-fail') {
+        emit({ type: 'final', text: `echo:${input}`, reason: { kind: 'completed' }, sessionId })
+        process.stderr.write('flush failed\n')
+        process.exitCode = 1
+        return
+    }
+    // 裸 final（缺字段）以 0 退出（BUG-08 第三种情况）
+    if (mode === 'bare-final') {
+        process.stdout.write(JSON.stringify({ type: 'final' }) + '\n')
+        return
+    }
     // hang/stubborn：长时间挂起（计时器保持事件循环存活），等超时或取消来终止
     if (mode === 'hang' || mode === 'stubborn') { await sleep(3600_000); return }
     if (mode === 'fail') {

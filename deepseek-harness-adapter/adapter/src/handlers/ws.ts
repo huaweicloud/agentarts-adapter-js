@@ -1,15 +1,14 @@
 import {
     WebSocketDisconnect, type RequestContext, type WebSocketConnection,
 } from '@huaweicloud/agentarts-sdk/sdk/runtime'
-import type { Frame } from '@agentarts/harness-dsh-shared'
 import type { Scheduler } from '../scheduler/index.js'
 import { normalizeRequest } from '../request.js'
 
 /**
- * A 模块：/ws 处理器（spec §3.3）。帧透传，一轮结束不关连接；
+ * A 模块：/ws 处理器（spec §3.3）。非终态帧实时透传，一轮结束不关连接；
  * 对端断开静默退出。与 /ping 分离，长连接不影响探活。
- * 取消（BUG-06）：信号在入队前建立，排队期间断开也取消；成功终态延迟到
- * driver flush 且子进程退出后再发，保护收到 final 立即关闭的正常客户端。
+ * 取消（BUG-06）：信号在入队前建立，排队期间断开也取消。
+ * 终态（BUG-08）：执行层暂存 driver 的 final/error，outcome 结算后恰好发一个终态。
  */
 export function createWsHandler(scheduler: Scheduler) {
     return async (ws: WebSocketConnection, ctx: RequestContext): Promise<void> => {
@@ -36,20 +35,15 @@ export function createWsHandler(scheduler: Scheduler) {
             ws.raw.once('close', onClose)
             try {
                 const handle = await scheduler.run(req, ac.signal)
-                let pendingFinal: Frame | null = null
+                // 帧流只含非终态帧，实时透传（终态由执行层暂存，BUG-08）
                 for await (const frame of handle.frames) {
                     if (ws.closed) break
-                    if (frame.type === 'final') {
-                        // 扣住 final：等 outcome 确认 flush 完成、进程成功退出后再发
-                        pendingFinal = frame
-                        continue
-                    }
                     await ws.sendJson(frame)
                 }
                 const outcome = await handle.outcome
                 if (!ws.closed) {
-                    if (outcome.ok && pendingFinal) {
-                        await ws.sendJson(pendingFinal)
+                    if (outcome.ok && outcome.final) {
+                        await ws.sendJson(outcome.final)
                     } else if (!outcome.ok) {
                         await ws.sendJson({ type: 'error', message: outcome.error ?? 'round failed' })
                     }

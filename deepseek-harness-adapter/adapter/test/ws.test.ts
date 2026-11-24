@@ -99,15 +99,31 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         ws.close()
     })
 
-    it('失败轮：补发 error 帧', async () => {
+    it('失败轮：恰好一条 error 终态，不重复（BUG-08）', async () => {
         const url = await start('fail')
         const ws = new WebSocket(url)
         await new Promise((r) => ws.once('open', r))
         const round = collectRound(ws)
         ws.send(JSON.stringify({ prompt: 'x' }))
         const frames = await round
-        // fail 模式子进程自身输出 error 帧；断言流中出现 error
-        expect(frames.some((f) => f.type === 'error')).toBe(true)
+        // collectRound 在首个终态即 resolve；listener 仍挂着，等一拍捕获可能的重复帧
+        await new Promise((r) => setTimeout(r, 100))
+        const errors = frames.filter((f) => f.type === 'error')
+        expect(errors).toHaveLength(1)
+        expect(errors[0].message).toBe('model exploded')
+        ws.close()
+    })
+
+    it('final 后子进程失败：客户端只收 error，绝收不到 final（BUG-08）', async () => {
+        const url = await start('final-then-fail')
+        const ws = new WebSocket(url)
+        await new Promise((r) => ws.once('open', r))
+        const round = collectRound(ws)
+        ws.send(JSON.stringify({ prompt: 'x' }))
+        const frames = await round
+        await new Promise((r) => setTimeout(r, 100))
+        expect(frames.some((f) => f.type === 'final')).toBe(false)
+        expect(frames.filter((f) => f.type === 'error')).toHaveLength(1)
         ws.close()
     })
 

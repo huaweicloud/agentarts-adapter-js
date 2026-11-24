@@ -25,7 +25,10 @@ export function createAguiHandler(scheduler: Scheduler) {
         }, input.signal)
         yield* handle.frames
         const outcome = await handle.outcome
-        if (!outcome.ok) {
+        // 唯一终态来自执行层 outcome（BUG-08）：成功发 final，失败发 error
+        if (outcome.ok && outcome.final) {
+            yield outcome.final
+        } else if (!outcome.ok) {
             yield { type: 'error', message: outcome.error ?? 'round failed' }
         }
     }

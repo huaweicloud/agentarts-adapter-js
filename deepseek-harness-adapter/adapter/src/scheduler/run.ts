@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import {
-    parseFrame, type Frame, type FinalFrame, type LaunchSpec,
+    parseFrame, type Frame, type FinalFrame, type ErrorFrame, type LaunchSpec,
 } from '@agentarts/harness-dsh-shared'
 
 /** 一轮超时默认值（spec §7 第 8 项待与平台对齐，先按 5 分钟） */
@@ -69,6 +69,7 @@ export function runRound(
 
     const channel = createFrameChannel()
     let final: FinalFrame | null = null
+    let errorFrame: ErrorFrame | null = null
     let stderrTail = ''
     let failReason: string | null = null
     let settled = false
@@ -108,7 +109,9 @@ export function runRound(
         lines.on('line', (line) => {
             const r = parseFrame(line)
             if (r.ok) {
-                if (r.frame.type === 'final') final = r.frame
+                // 终态帧暂存校验，不进帧流；退出后由 outcome 统一给出唯一终态（BUG-08）
+                if (r.frame.type === 'final') { final ??= r.frame; return }
+                if (r.frame.type === 'error') { errorFrame ??= r.frame; return }
                 channel.push(r.frame)
             } else if (r.reason === 'invalid') {
                 // 协议被破坏：立即判失败并终止子进程
@@ -127,10 +130,13 @@ export function runRound(
             signal?.removeEventListener('abort', onCancel)
             channel.end()
             settled = true
-            // SIGTERM 清理路径可能以 0 退出，但 failReason 已置 → 仍判失败
-            const ok = code === 0 && final !== null && failReason === null
+            // 终态综合判定（BUG-08）：exit 0 + 合法 final + 无失败原因 + 无 driver error 帧。
+            // final 后 exit 1（flush 失败）→ 失败，客户端绝不会收到 final。
+            // SIGTERM 清理路径可能以 0 退出，但 failReason 已置 → 仍判失败。
+            const ok = code === 0 && final !== null && failReason === null && errorFrame === null
             const error = ok ? null
                 : failReason
+                    ?? errorFrame?.message
                     ?? (code !== 0 ? `exit ${code}: ${stderrTail}` : 'no final frame')
             resolve({ ok, final, error, exitCode: code })
         })

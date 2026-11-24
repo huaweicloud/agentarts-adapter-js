@@ -29,16 +29,20 @@ describe('runRound', () => {
         expect(outcome.ok).toBe(true)
         expect(outcome.exitCode).toBe(0)
         expect(outcome.final?.text).toBe('echo:hello')
-        expect(frames.map((f) => f.type)).toEqual(['session', 'status', 'delta', 'final'])
+        // 终态帧由执行层暂存，帧流只含非终态帧（BUG-08）
+        expect(frames.map((f) => f.type)).toEqual(['session', 'status', 'delta'])
     })
 
     it('非 0 退出：失败，stderr 并入错误信息', async () => {
         const handle = runRound(spec('fail'), 'x')
-        await collect(handle.frames)
+        const frames = await collect(handle.frames)
         const outcome = await handle.outcome
         expect(outcome.ok).toBe(false)
         expect(outcome.exitCode).toBe(1)
         expect(outcome.error).toContain('model exploded')
+        // 子进程 error 帧暂存不转发，终态由 outcome 统一给出（BUG-08）
+        expect(frames.some((f) => f.type === 'error')).toBe(false)
+        expect(outcome.error).toBe('model exploded')
     })
 
     it('exit 0 但无 final：失败', async () => {
@@ -86,8 +90,26 @@ describe('runRound', () => {
         const handle = runRound(s, 'x')
         const frames = await collect(handle.frames)
         const outcome = await handle.outcome
-        expect(frames).toHaveLength(1)
+        expect(frames).toHaveLength(0)   // final 被暂存，不进帧流（BUG-08）
         expect(outcome.ok).toBe(true)
+        expect(outcome.final?.text).toBe('t')
+    })
+
+    it('final 后 exit 1（flush 失败）：帧流无 final，判失败（BUG-08）', async () => {
+        const handle = runRound(spec('final-then-fail'), 'x')
+        const frames = await collect(handle.frames)
+        const outcome = await handle.outcome
+        expect(frames.some((f) => f.type === 'final')).toBe(false)
+        expect(outcome.ok).toBe(false)
+        expect(outcome.error).toContain('flush failed')
+    })
+
+    it('裸 final + exit 0：协议校验判失败（BUG-08）', async () => {
+        const handle = runRound(spec('bare-final'), 'x', 5000)
+        await collect(handle.frames)
+        const outcome = await handle.outcome
+        expect(outcome.ok).toBe(false)
+        expect(outcome.error).toContain('invalid frame line')
     })
 
     it('spawn 前已取消：不启动子进程，直接 cancelled 结算（BUG-06）', async () => {
