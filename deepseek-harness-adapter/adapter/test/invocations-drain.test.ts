@@ -3,7 +3,7 @@ import type { RoundHandle } from '../src/scheduler/run.js'
 import type { Scheduler } from '../src/scheduler/index.js'
 import { createInvocationHandler } from '../src/handlers/invocations.js'
 
-describe('invocations 帧流消费（BUG-07 回归，BUG-11 扩至万帧）', () => {
+describe('invocations 帧流消费', () => {
     it('排空帧流，不无界缓存（10000 帧长输出）', async () => {
         let yielded = 0
         const finalFrame = {

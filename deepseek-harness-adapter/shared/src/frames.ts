@@ -1,5 +1,5 @@
 /**
- * 帧契约（spec §3.1）：driver 写入 stdout 的 NDJSON，一行一帧。
+ * 帧契约：driver 写入 stdout 的 NDJSON，一行一帧。
  * 帧类型命名不带 DSH 词汇——这是跨 harness 的公共契约。
  */
 
@@ -35,7 +35,7 @@ const FRAME_TYPES = new Set([
     'session', 'status', 'delta', 'tool_call', 'tool_result', 'question', 'final', 'error',
 ])
 
-/** 终态帧严格校验（BUG-08）：裸 final / 缺字段一律 invalid，防止"成功但无结果" */
+/** 终态帧严格校验：裸 final / 缺字段一律 invalid，防止"成功但无结果" */
 function validTerminal(value: Record<string, unknown>): boolean {
     if (value.type === 'final') {
         const reason = value.reason as { kind?: unknown } | null | undefined

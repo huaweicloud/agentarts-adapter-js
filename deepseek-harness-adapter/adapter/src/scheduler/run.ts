@@ -5,7 +5,7 @@ import {
 } from '@agentarts/harness-dsh-shared'
 import { createFrameChannel } from './frame-channel.js'
 
-/** 一轮超时默认值（spec §7 第 8 项待与平台对齐，先按 5 分钟） */
+/** 一轮超时默认值（先按 5 分钟，待与平台对齐后调整） */
 export const DEFAULT_ROUND_TIMEOUT_MS = 300_000
 /** 取消宽限期：先 SIGTERM 让 DSH 清理（该路径可能以 0 退出），宽限后未退出再 SIGKILL */
 export const CANCEL_GRACE_MS = 5_000
@@ -36,9 +36,9 @@ export function cancelledHandle(error: string): RoundHandle {
 }
 
 /**
- * 执行一轮（spec §3.2）：spawn 子进程，stdin 写任务，stdout 逐行解析帧，
- * 按退出码与 final 帧判成败。B 不缓存结果——幂等判重在子进程内（D）。
- * 取消（BUG-06）：signal 或 handle.cancel() 触发优雅终止，首个终止原因只记录一次。
+ * 执行一轮：spawn 子进程，stdin 写任务，stdout 逐行解析帧，
+ * 按退出码与 final 帧判成败。执行层不缓存结果——幂等判重在子进程（driver）内。
+ * 取消：signal 或 handle.cancel() 触发优雅终止，首个终止原因只记录一次。
  */
 export function runRound(
     spec: LaunchSpec, task: string, timeoutMs = DEFAULT_ROUND_TIMEOUT_MS, signal?: AbortSignal,
@@ -55,7 +55,7 @@ export function runRound(
     const child = spawn(spec.command, spec.args, {
         env: spec.env, stdio: ['pipe', 'pipe', 'pipe'],
     })
-    // 字节水位背压（BUG-11）：慢消费者使队列超高水位 → 暂停子进程 stdout，
+    // 字节水位背压：慢消费者使队列超高水位 → 暂停子进程 stdout，
     // 管道写满后 driver 自然阻塞；消费回落到低水位 → 恢复
     const channel = createFrameChannel({
         onPause: () => child.stdout.pause(),
@@ -93,7 +93,7 @@ export function runRound(
         lines.on('line', (line) => {
             const r = parseFrame(line)
             if (r.ok) {
-                // 终态帧暂存校验，不进帧流；退出后由 outcome 统一给出唯一终态（BUG-08）
+                // 终态帧暂存校验，不进帧流；退出后由 outcome 统一给出唯一终态
                 if (r.frame.type === 'final') { final ??= r.frame; return }
                 if (r.frame.type === 'error') { errorFrame ??= r.frame; return }
                 channel.push(r.frame, Buffer.byteLength(line))
@@ -114,7 +114,7 @@ export function runRound(
             signal?.removeEventListener('abort', onCancel)
             channel.end()
             settled = true
-            // 终态综合判定（BUG-08）：exit 0 + 合法 final + 无失败原因 + 无 driver error 帧。
+            // 终态综合判定：exit 0 + 合法 final + 无失败原因 + 无 driver error 帧。
             // final 后 exit 1（flush 失败）→ 失败，客户端绝不会收到 final。
             // SIGTERM 清理路径可能以 0 退出，但 failReason 已置 → 仍判失败。
             const ok = code === 0 && final !== null && failReason === null && errorFrame === null

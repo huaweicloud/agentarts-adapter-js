@@ -13,7 +13,7 @@ async function start(maxConcurrency?: number): Promise<string> {
     return `http://${started.base}`
 }
 afterEach(async () => {
-    // server 为 null 时直接跳过（BUG-09：可选链短路会使 Promise 永不 resolve）
+    // server 为 null 时直接跳过（可选链短路会使 Promise 永不 resolve）
     if (server) await new Promise((r) => server!.close(r))
     server = null
 })
@@ -78,7 +78,7 @@ describe('POST /invocations（真 SDK app + 假子进程）', () => {
     })
 })
 
-describe('afterEach 钩子（BUG-09 回归）', () => {
+describe('afterEach 钩子', () => {
     it('无 server 的单元测试不挂起钩子', () => {
         expect(server).toBeNull()
     })

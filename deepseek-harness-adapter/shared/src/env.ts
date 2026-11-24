@@ -1,4 +1,4 @@
-/** AGENTRUN_* 环境变量名（spec §3.4）：Adapter 与子进程之间的自有契约。 */
+/** AGENTRUN_* 环境变量名：Adapter 与子进程之间的自有契约。 */
 export const ENV_SESSION_ID = 'AGENTRUN_DSH_SESSION_ID'
 export const ENV_EVENT_ID = 'AGENTRUN_EVENT_ID'
 export const ENV_ATTEMPT = 'AGENTRUN_ATTEMPT'

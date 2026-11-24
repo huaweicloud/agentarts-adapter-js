@@ -19,7 +19,7 @@ async function start(mode = 'normal'): Promise<string> {
     return listen(createApp(new Scheduler({ launchSpec: () => fakeSpec(mode) })))
 }
 afterEach(async () => {
-    // server 为 null 时直接跳过（BUG-09：可选链短路会使 Promise 永不 resolve）
+    // server 为 null 时直接跳过（可选链短路会使 Promise 永不 resolve）
     if (server) await new Promise((r) => server!.close(r))
     server = null
 })
@@ -86,7 +86,7 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         ws.close()
     })
 
-    it('失败轮：恰好一条 error 终态，不重复（BUG-08）', async () => {
+    it('失败轮：恰好一条 error 终态，不重复', async () => {
         const url = await start('fail')
         const ws = new WebSocket(url)
         await new Promise((r) => ws.once('open', r))
@@ -101,7 +101,7 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         ws.close()
     })
 
-    it('final 后子进程失败：客户端只收 error，绝收不到 final（BUG-08）', async () => {
+    it('final 后子进程失败：客户端只收 error，绝收不到 final', async () => {
         const url = await start('final-then-fail')
         const ws = new WebSocket(url)
         await new Promise((r) => ws.once('open', r))
@@ -150,7 +150,7 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         expect(ws.readyState).toBe(WebSocket.CLOSED)
     })
 
-    it('升级头 sessionId 作缺省回退，payload 优先（BUG-03 回归）', async () => {
+    it('升级头 sessionId 作缺省回退，payload 优先', async () => {
         const seen: string[] = []
         const scheduler = new Scheduler({
             launchSpec: (req) => { seen.push(req.sessionId); return fakeSpec() },
@@ -171,7 +171,7 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         ws.close()
     })
 
-    it('排队期间断开：被取消的轮次从未 spawn（BUG-06 验收①）', async () => {
+    it('排队期间断开：被取消的轮次从未 spawn', async () => {
         const { scheduler, spawned, handles } = spyScheduler()
         const url = await listen(createApp(scheduler))
         const ws1 = new WebSocket(url)
@@ -196,7 +196,7 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         expect(o1.error).toContain('cancelled')
     })
 
-    it('执行中断开：首轮 cancelled 结算，同会话第二轮随后启动（BUG-06 回归）', async () => {
+    it('执行中断开：首轮 cancelled 结算，同会话第二轮随后启动', async () => {
         const { scheduler, spawned, handles } = spyScheduler()
         const url = await listen(createApp(scheduler))
         const ws1 = new WebSocket(url)
@@ -219,7 +219,7 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         ws2.close()
     })
 
-    it('收到 final 后立即关闭：flush 已完成（BUG-06 验收②）', async () => {
+    it('收到 final 后立即关闭：flush 已完成', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'dsh-flush-'))
         const scheduler = new Scheduler({
             launchSpec: (req) => fakeSpec('normal', {
@@ -239,7 +239,7 @@ describe('WS /ws（真 ws 客户端 + 假子进程）', () => {
         expect(existsSync(join(dir, 'flush-s1-e1.json'))).toBe(true)
     })
 
-    it('ws 慢消费者：背压生效，恢复后 3000 帧不丢（BUG-11）', async () => {
+    it('ws 慢消费者：背压生效，恢复后 3000 帧不丢', async () => {
         const url = await start('flood')
         const ws = new WebSocket(url)
         await new Promise((r) => ws.once('open', r))

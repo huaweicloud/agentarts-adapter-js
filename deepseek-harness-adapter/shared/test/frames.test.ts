@@ -42,18 +42,18 @@ describe('parseFrame', () => {
         expect(parseFrame('"str"').ok).toBe(false)
     })
 
-    it('裸 final（缺 text/reason/sessionId）返回 invalid（BUG-08）', () => {
+    it('裸 final（缺 text/reason/sessionId）返回 invalid', () => {
         expect(parseFrame(JSON.stringify({ type: 'final' })).ok).toBe(false)
     })
 
-    it('final 缺字段返回 invalid（BUG-08）', () => {
+    it('final 缺字段返回 invalid', () => {
         expect(parseFrame(JSON.stringify({ type: 'final', text: 't' })).ok).toBe(false)
         expect(parseFrame(JSON.stringify({
             type: 'final', text: 't', reason: { kind: 'completed' },
         })).ok).toBe(false)
     })
 
-    it('error 缺 message 返回 invalid，合法 error 通过（BUG-08）', () => {
+    it('error 缺 message 返回 invalid，合法 error 通过', () => {
         expect(parseFrame(JSON.stringify({ type: 'error' })).ok).toBe(false)
         expect(parseFrame(JSON.stringify({ type: 'error', message: 'm' })).ok).toBe(true)
     })

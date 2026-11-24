@@ -12,7 +12,7 @@ export const LOW_WATER_BYTES = 1 * 1024 * 1024
 
 /**
  * 帧通道：生产端 push/end，消费端异步迭代（单消费者）。
- * 字节水位背压（BUG-11）：队列超高水位触发 onPause（runRound 接子进程 stdout.pause），
+ * 字节水位背压：队列超高水位触发 onPause（runRound 接子进程 stdout.pause），
  * 消费回落到低水位触发 onResume——慢消费者下内存上界 = 水位 + 管道缓冲，与轮次长度无关。
  */
 export function createFrameChannel(

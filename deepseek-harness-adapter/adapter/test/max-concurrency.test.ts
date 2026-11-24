@@ -3,7 +3,7 @@ import type { LaunchSpec } from '@agentarts/harness-dsh-shared'
 import { createApp, parseMaxConcurrency } from '../src/main.js'
 import { Scheduler } from '../src/scheduler/index.js'
 
-describe('parseMaxConcurrency（BUG-04 回归）', () => {
+describe('parseMaxConcurrency', () => {
     it('非法值一律回退 15', () => {
         for (const raw of [undefined, '', 'abc', '0', '-2', '3.5']) {
             expect(parseMaxConcurrency(raw)).toBe(15)

@@ -33,7 +33,7 @@ describe('buildLaunchSpec', () => {
         delete process.env.SECRET_TOKEN
     })
 
-    it('MCP 凭证变量不进子进程，仅 MCP_*_URL 端点放行（BUG-02 回归）', () => {
+    it('MCP 凭证变量不进子进程，仅 MCP_*_URL 端点放行', () => {
         process.env.MCP_AUTH_TOKEN = 'secret'
         process.env.MCP_API_KEY = 'secret'
         process.env.MCP_SEARCH_URL = 'http://mcp'

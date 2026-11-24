@@ -6,7 +6,7 @@ const delta = (i: number): Frame => ({
     type: 'delta', kind: 'text', text: `t${i}`, attemptId: 'a', revision: i,
 })
 
-describe('帧通道字节水位背压（BUG-11）', () => {
+describe('帧通道字节水位背压', () => {
     it('只 push 不消费：超高水位触发 onPause，且只触发一次', () => {
         const calls: string[] = []
         const ch = createFrameChannel({

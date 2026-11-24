@@ -38,14 +38,14 @@ process.stdin.on('end', async () => {
     }
     if (mode === 'slow') await sleep(150)
     emit({ type: 'delta', kind: 'text', text: `echo:${input}`, attemptId: 'a1', revision: 0 })
-    // final 后 flush 失败：先写 final 再以 1 退出（BUG-08 第一种情况）
+    // final 后 flush 失败：先写 final 再以 1 退出
     if (mode === 'final-then-fail') {
         emit({ type: 'final', text: `echo:${input}`, reason: { kind: 'completed' }, sessionId })
         process.stderr.write('flush failed\n')
         process.exitCode = 1
         return
     }
-    // 裸 final（缺字段）以 0 退出（BUG-08 第三种情况）
+    // 裸 final（缺字段）以 0 退出
     if (mode === 'bare-final') {
         process.stdout.write(JSON.stringify({ type: 'final' }) + '\n')
         return
@@ -62,7 +62,7 @@ process.stdin.on('end', async () => {
     }
     if (mode === 'nofinal') return
     emit({ type: 'final', text: `echo:${input}`, reason: { kind: 'completed' }, sessionId })
-    // 模拟 driver 的 flush：final 之后、退出之前落盘（BUG-06 验收②）
+    // 模拟 driver 的 flush：final 之后、退出之前落盘
     if (process.env.AGENTRUN_TEST_FLUSH_DIR) {
         writeFileSync(
             join(process.env.AGENTRUN_TEST_FLUSH_DIR, `flush-${sessionId}-${eventId}.json`),

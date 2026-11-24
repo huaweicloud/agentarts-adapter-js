@@ -48,7 +48,7 @@ describe('createA2AHandler', () => {
         expect(registry.lookup('t1')).toBeUndefined()
     })
 
-    it('非终态帧透传 + 恰好一个终态（BUG-08）', async () => {
+    it('非终态帧透传 + 恰好一个终态', async () => {
         const registry = new TaskRegistry()
         const delta: Frame = { type: 'delta', kind: 'text', text: 't', attemptId: 'a', revision: 0 }
         const frames = await collect(
@@ -58,7 +58,7 @@ describe('createA2AHandler', () => {
 })
 
 describe('createAguiHandler', () => {
-    it('透传非终态帧 + 唯一终态；eventId/attempt 缺省自动生成（BUG-08）', async () => {
+    it('透传非终态帧 + 唯一终态；eventId/attempt 缺省自动生成', async () => {
         let seen: any = null
         const delta: Frame = { type: 'delta', kind: 'text', text: 't', attemptId: 'a', revision: 0 }
         const scheduler = {
@@ -90,7 +90,7 @@ describe('TaskRegistry', () => {
         expect(r.lookup('t')).toBeUndefined()
     })
 
-    it('所有权校验：旧轮令牌删不掉新轮绑定（BUG-05 回归）', () => {
+    it('所有权校验：旧轮令牌删不掉新轮绑定', () => {
         const r = new TaskRegistry()
         const owner1 = r.bind('t', 's1', new AbortController())
         const owner2 = r.bind('t', 's2', new AbortController())   // 重试轮覆盖绑定
@@ -101,7 +101,7 @@ describe('TaskRegistry', () => {
     })
 })
 
-describe('A2A 取消语义（BUG-06 验收③）', () => {
+describe('A2A 取消语义', () => {
     it('退订不取消任务；显式 registry.cancel 才 abort 轮次信号', async () => {
         const registry = new TaskRegistry()
         let seenSignal: AbortSignal | undefined

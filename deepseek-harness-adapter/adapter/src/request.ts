@@ -5,7 +5,7 @@ function asString(v: unknown): string | null {
     return typeof v === 'string' && v !== '' ? v : null
 }
 
-/** payload → 四元组。sessionId 优先级：payload > 请求头 > 生成（spec §2.2）。 */
+/** payload → 四元组。sessionId 优先级：payload > 请求头 > 生成。 */
 export function normalizeRequest(payload: any, headerSessionId?: string | null): RoundRequest {
     if (typeof payload?.prompt !== 'string' || payload.prompt === '') {
         throw new Error('prompt is required')

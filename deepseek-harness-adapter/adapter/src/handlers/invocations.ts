@@ -4,7 +4,7 @@ import { normalizeRequest } from '../request.js'
 import { SESSION_HEADER } from '../types.js'
 
 /**
- * A 模块：/invocations 处理器（spec §2.2）。只要 final 帧；
+ * /invocations 处理器。只要 final 帧；
  * 响应头显式携带 sessionId（不依赖 SDK 从请求头回填）。
  */
 export function createInvocationHandler(scheduler: Scheduler) {
@@ -16,7 +16,7 @@ export function createInvocationHandler(scheduler: Scheduler) {
             return new JsonResponse({ statusCode: 400, content: { error: (err as Error).message } })
         }
         const handle = await scheduler.run(req)
-        // 并发排空帧流：只要 final，但必须消费，否则整轮帧无界缓存（BUG-07）
+        // 并发排空帧流：只要 final，但必须消费，否则整轮帧无界缓存
         const drained = (async () => {
             for await (const _frame of handle.frames) { /* 丢弃非 final 帧 */ }
         })()

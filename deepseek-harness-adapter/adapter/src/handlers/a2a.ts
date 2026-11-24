@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Frame } from '@agentarts/harness-dsh-shared'
 import type { Scheduler } from '../scheduler/index.js'
 
-/** 归一化 A2A 输入（SDK 侧负责把 A2A message 适配成此形状，契约待确认，spec §7 第 3 项） */
+/** 归一化 A2A 输入（SDK 侧负责把 A2A message 适配成此形状，最终契约以 SDK 接口为准） */
 export interface A2ARequest {
     taskId: string
     sessionId: string
@@ -11,13 +11,13 @@ export interface A2ARequest {
     attempt: number
 }
 
-/** taskId ↔ sessionId 映射（spec §2.3）；执行期间绑定，本轮结束凭所有权令牌解绑 */
+/** taskId ↔ sessionId 映射；执行期间绑定，本轮结束凭所有权令牌解绑 */
 export class TaskRegistry {
     private map = new Map<string, {
         sessionId: string; owner: symbol; controller: AbortController
     }>()
 
-    /** 绑定并返回所有权令牌；同 taskId 重试轮覆盖绑定，旧轮令牌随之失效（BUG-05） */
+    /** 绑定并返回所有权令牌；同 taskId 重试轮覆盖绑定，旧轮令牌随之失效 */
     bind(taskId: string, sessionId: string, controller: AbortController): symbol {
         const owner = Symbol(taskId)
         this.map.set(taskId, { sessionId, owner, controller })
@@ -31,7 +31,7 @@ export class TaskRegistry {
         if (this.map.get(taskId)?.owner === owner) this.map.delete(taskId)
     }
 
-    /** 显式 CancelTask 入口：abort 当前绑定轮次（SDK A2A 面交付后接线，BUG-06） */
+    /** 显式 CancelTask 入口：abort 当前绑定轮次（待 SDK A2A 接口就绪后接线） */
     cancel(taskId: string): boolean {
         const entry = this.map.get(taskId)
         if (!entry) return false
@@ -41,9 +41,9 @@ export class TaskRegistry {
 }
 
 /**
- * A 模块：A2A 处理器。产出帧流，task 状态迁移/产物翻译在 SDK 的 A2A 面。
+ * A2A 处理器。产出帧流，task 状态迁移/产物翻译在 SDK 的 A2A 面。
  * 任务生命周期独立于订阅流：退订不取消任务，取消由显式 CancelTask
- * （registry.cancel）触发（BUG-06）。
+ * （registry.cancel）触发。
  */
 export function createA2AHandler(scheduler: Scheduler, registry: TaskRegistry) {
     return async function* (input: A2ARequest): AsyncIterable<Frame> {
@@ -58,7 +58,7 @@ export function createA2AHandler(scheduler: Scheduler, registry: TaskRegistry) {
             }, controller.signal)
             yield* handle.frames
             const outcome = await handle.outcome
-            // 唯一终态来自执行层 outcome（BUG-08）：成功发 final，失败发 error
+            // 唯一终态来自执行层 outcome：成功发 final，失败发 error
             if (outcome.ok && outcome.final) {
                 yield outcome.final
             } else if (!outcome.ok) {

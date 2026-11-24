@@ -1,5 +1,5 @@
 /**
- * 同 sessionId 串行队列（spec §4.4）：一个会话同一时刻只由一个子进程持有。
+ * 同 sessionId 串行队列：一个会话同一时刻只由一个子进程持有。
  * 全局并发上限不在这里——由 SDK maxConcurrency 执行。
  */
 export class SessionQueue {

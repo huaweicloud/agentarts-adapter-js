@@ -5,10 +5,10 @@ import type { Scheduler } from '../scheduler/index.js'
 import { normalizeRequest } from '../request.js'
 
 /**
- * A 模块：/ws 处理器（spec §3.3）。非终态帧实时透传，一轮结束不关连接；
+ * /ws 处理器。非终态帧实时透传，一轮结束不关连接；
  * 对端断开静默退出。与 /ping 分离，长连接不影响探活。
- * 取消（BUG-06）：信号在入队前建立，排队期间断开也取消。
- * 终态（BUG-08）：执行层暂存 driver 的 final/error，outcome 结算后恰好发一个终态。
+ * 取消：信号在入队前建立，排队期间断开也取消。
+ * 终态：执行层暂存 driver 的 final/error，outcome 结算后恰好发一个终态。
  */
 export function createWsHandler(scheduler: Scheduler) {
     return async (ws: WebSocketConnection, ctx: RequestContext): Promise<void> => {
@@ -22,7 +22,7 @@ export function createWsHandler(scheduler: Scheduler) {
             }
             let req
             try {
-                // sessionId 优先级：payload > 升级请求头 > 生成（BUG-03，与 invocations 对齐）
+                // sessionId 优先级：payload > 升级请求头 > 生成（与 invocations 对齐）
                 req = normalizeRequest(payload, ctx.sessionId)
             } catch (err) {
                 await ws.sendJson({ type: 'error', message: (err as Error).message })
@@ -35,7 +35,7 @@ export function createWsHandler(scheduler: Scheduler) {
             ws.raw.once('close', onClose)
             try {
                 const handle = await scheduler.run(req, ac.signal)
-                // 帧流只含非终态帧，实时透传（终态由执行层暂存，BUG-08）
+                // 帧流只含非终态帧，实时透传（终态由执行层暂存）
                 for await (const frame of handle.frames) {
                     if (ws.closed) break
                     await ws.sendJson(frame)
