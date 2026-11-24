@@ -24,7 +24,8 @@ async function start(maxConcurrency?: number): Promise<string> {
     return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`
 }
 afterEach(async () => {
-    await new Promise((r) => server?.close(r))
+    // server 为 null 时直接跳过（BUG-09：可选链短路会使 Promise 永不 resolve）
+    if (server) await new Promise((r) => server!.close(r))
     server = null
 })
 
@@ -87,5 +88,11 @@ describe('POST /invocations（真 SDK app + 假子进程）', () => {
         const res = await fetch(`${base}/ping`)
         expect(res.status).toBe(200)
         expect(await res.text()).toContain('Healthy')
+    })
+})
+
+describe('afterEach 钩子（BUG-09 回归）', () => {
+    it('无 server 的单元测试不挂起钩子', () => {
+        expect(server).toBeNull()
     })
 })

@@ -27,7 +27,8 @@ async function start(mode = 'normal'): Promise<string> {
     return `ws://127.0.0.1:${(server!.address() as AddressInfo).port}/ws`
 }
 afterEach(async () => {
-    await new Promise((r) => server?.close(r))
+    // server 为 null 时直接跳过（BUG-09：可选链短路会使 Promise 永不 resolve）
+    if (server) await new Promise((r) => server!.close(r))
     server = null
 })
 
