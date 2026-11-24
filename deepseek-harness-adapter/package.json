@@ -6,6 +6,7 @@
     "scripts": {
         "build": "pnpm -r run build",
         "test": "pnpm -r run build && pnpm -r run test",
-        "test:coverage": "pnpm -r run build && pnpm -r run test:coverage"
+        "test:coverage": "pnpm -r run build && pnpm -r run test:coverage",
+        "smoke": "pnpm run build && node scripts/smoke.mjs"
     }
 }

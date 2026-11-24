@@ -16,8 +16,9 @@
     pnpm test            # 全部（先构建 shared）
     pnpm test:coverage   # 覆盖率阈值 80%
 
-集成测试用假子进程（test/fixtures/fake-dsh.mjs），不依赖真 dsh；
-真 dsh 冒烟脚本（scripts/smoke.mjs）待补。
+集成测试用假子进程（test/fixtures/fake-dsh.mjs），不依赖真 dsh。
+进程级冒烟：node scripts/smoke.mjs（启动构建产物，验证探活/参数校验/错误路径）；
+真 dsh 端到端冒烟待 driver 侧就绪后补充。
 
 ## 待接线（外部依赖）
 
