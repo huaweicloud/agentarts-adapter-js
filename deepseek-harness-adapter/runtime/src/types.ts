@@ -64,7 +64,6 @@ export interface RuntimeConfig {
     gateway: GatewayConfig
     tokenStream: boolean
     sessionTtlMs: number
-    maxSessions: number
     promptTimeoutMs: number
     queueTimeoutMs: number
     maxConcurrency: number

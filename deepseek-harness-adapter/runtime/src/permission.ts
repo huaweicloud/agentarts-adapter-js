@@ -95,9 +95,7 @@ export class PermissionBroker {
             const decision =
                 raw === 'allow' || raw === 'reject' || raw === 'cancel'
                     ? raw
-                    : typeof raw === 'string' && raw.length > 0
-                      ? 'allow'
-                      : this.config.fallback
+                    : this.config.fallback
             const optionId =
                 typeof body.optionId === 'string'
                     ? body.optionId

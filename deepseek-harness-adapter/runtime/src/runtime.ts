@@ -266,6 +266,7 @@ export class AcpRuntime {
             await client.initialize()
             return client
         })().catch((error) => {
+            this.client?.dispose()
             this.client = null
             this.clientPromise = null
             throw error

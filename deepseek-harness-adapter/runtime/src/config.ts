@@ -163,7 +163,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         gateway,
         tokenStream: bool(stringEnv(env, 'DSH_ACP_TOKEN_STREAM'), true),
         sessionTtlMs: int(stringEnv(env, 'DSH_ACP_SESSION_TTL_MS'), 30 * 60_000),
-        maxSessions: int(stringEnv(env, 'DSH_ACP_MAX_SESSIONS'), 50),
         promptTimeoutMs: int(stringEnv(env, 'DSH_ACP_PROMPT_TIMEOUT_MS'), 600_000),
         queueTimeoutMs: int(stringEnv(env, 'DSH_ACP_QUEUE_TIMEOUT_MS'), 60_000),
         maxConcurrency: int(

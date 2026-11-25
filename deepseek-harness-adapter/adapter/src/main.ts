@@ -9,14 +9,26 @@ import { TaskRegistry } from './handlers/a2a.js'
 import { loadConfig, RuntimeConfig, createDshApp } from '@agentarts/harness-dsh-runtime'
 
 
+/** 解析并发上限 env：非法值（NaN/0/负数/非整数）回退 15，避免限流静默失效 */
+export function parseMaxConcurrency(raw: string | undefined): number {
+    const n = Number(raw)
+    return Number.isInteger(n) && n > 0 ? n : 15
+}
+
 /** 装配 SDK app，main 只做装配。a2a/agui 守卫注册，SDK 接口就绪后自动生效。 */
-export function createDefaultApp(config: RuntimeConfig) {
-    const scheduler = new Scheduler({ launchSpec: buildLaunchSpec })
-    const app = new AgentArtsRuntimeApp({ maxConcurrency: config.maxConcurrency })
+export function createApp(scheduler: Scheduler, maxConcurrency?: number): AgentArtsRuntimeApp {
+    const limit = maxConcurrency ?? parseMaxConcurrency(process.env.AGENTRUN_MAX_CONCURRENCY)
+    const app = new AgentArtsRuntimeApp({ maxConcurrency: limit })
     app.entrypoint(createInvocationHandler(scheduler))
     app.websocket(createWsHandler(scheduler))
     registerProtocolFaces(app, scheduler, new TaskRegistry())
-    app.run();
+    return app
+}
+
+export function createDefaultApp(config: RuntimeConfig) {
+    const scheduler = new Scheduler({ launchSpec: buildLaunchSpec })
+    const app = createApp(scheduler, config.maxConcurrency)
+    app.run()
 }
 
 // 仅直接运行时启动服务；被测试导入时不启动
