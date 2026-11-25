@@ -2,29 +2,16 @@ import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import {
     parseFrame, type Frame, type FinalFrame, type ErrorFrame, type LaunchSpec,
+    type RoundHandle, type RoundOutcome,
 } from '@agentarts/harness-dsh-shared'
 import { createFrameChannel } from './frame-channel.js'
+
+export type { RoundHandle, RoundOutcome }
 
 /** 一轮超时默认值（先按 5 分钟，待与平台对齐后调整） */
 export const DEFAULT_ROUND_TIMEOUT_MS = 300_000
 /** 取消宽限期：先 SIGTERM 让 DSH 清理（该路径可能以 0 退出），宽限后未退出再 SIGKILL */
 export const CANCEL_GRACE_MS = 5_000
-
-export interface RoundOutcome {
-    ok: boolean
-    final: FinalFrame | null
-    error: string | null
-    exitCode: number | null
-}
-
-export interface RoundHandle {
-    /** 帧流，单消费者；子进程结束且缓冲 drain 后迭代完成 */
-    frames: AsyncIterable<Frame>
-    /** 子进程实际 close 后结算（队列名额随之释放） */
-    outcome: Promise<RoundOutcome>
-    /** 幂等取消：与外部 AbortSignal 收敛到同一 terminate 路径 */
-    cancel(): void
-}
 
 /** 从未 spawn 的轮次（排队期间/ spawn 前被取消）：空帧流 + 已结算 outcome */
 export function cancelledHandle(error: string): RoundHandle {

@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import type {
+    AgentRuntimeType,
     GatewayConfig,
     PermissionConfig,
     RuntimeConfig,
@@ -135,6 +136,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
                           ? systemModeRaw
                           : 'append',
               }
+    const agentRuntimeType = (stringEnv(env, 'AGENT_RUNTIME_TYPE') ?? 'DSH') as AgentRuntimeType
 
     return {
         acpCommand: command,
@@ -160,5 +162,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         host: stringEnv(env, 'AGENTARTS_BIND_IP') ?? stringEnv(env, 'HOST') ?? null,
         port: int(stringEnv(env, 'PORT'), 8080),
         logLevel: stringEnv(env, 'DSH_ACP_LOG_LEVEL') ?? 'info',
+        agentRuntimeType,
     }
 }

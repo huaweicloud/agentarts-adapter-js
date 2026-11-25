@@ -28,6 +28,6 @@ describe('createApp 并发配置', () => {
 
     it('显式参数优先于 env', () => {
         process.env.AGENTRUN_MAX_CONCURRENCY = '7'
-        expect(createApp(scheduler, 2).maxConcurrency).toBe(2)
+        expect(createApp(scheduler, { maxConcurrency: 2 }).maxConcurrency).toBe(2)
     })
 })

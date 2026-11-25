@@ -15,11 +15,9 @@
     "scripts": {
         "build": "tsc -p tsconfig.json",
         "test": "vitest run",
-        "test:coverage": "vitest run --coverage",
-        "start": "node dist/main.js"
+        "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "@agentarts/harness-dsh-adapter": "workspace:*",
         "@agentarts/harness-dsh-shared": "workspace:*",
         "@huaweicloud/agentarts-sdk": "^0.0.1"
     },

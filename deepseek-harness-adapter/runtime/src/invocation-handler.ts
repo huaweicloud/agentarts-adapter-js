@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { JsonResponse, type RequestContext } from '@huaweicloud/agentarts-sdk/sdk/runtime'
 
 import type { AcpRuntime } from './runtime.js'
+import { toRuntimeError } from './errors.js'
 import type { RuntimeEvent, TurnRequest } from './types.js'
 
 export const SESSION_HEADER = 'x-hw-agentarts-session-id'
@@ -53,9 +54,13 @@ function normalizePayload(payload: unknown, context?: RequestContext): TurnReque
     }
 }
 
-function errorResponse(error: unknown): JsonResponse {
+function errorResponse(
+    error: unknown,
+    statusCode = 400,
+    headers: Record<string, string> = {},
+): JsonResponse {
     return new JsonResponse({
-        statusCode: 400,
+        statusCode,
         content: {
             error: {
                 code:
@@ -65,6 +70,7 @@ function errorResponse(error: unknown): JsonResponse {
                 message: error instanceof Error ? error.message : String(error),
             },
         },
+        headers,
     })
 }
 
@@ -85,7 +91,11 @@ export function createInvocationHandler(runtime: AcpRuntime) {
         try {
             handle = await runtime.runTurn(request)
         } catch (error) {
-            return errorResponse(error)
+            // 执行期错误（spawn 失败 / 排队超时 / 关闭中）：保留 RuntimeError 状态码
+            const runtimeError = toRuntimeError(error)
+            return errorResponse(runtimeError, runtimeError.statusCode, {
+                [SESSION_HEADER]: request.sessionId,
+            })
         }
 
         if (!request.stream) {

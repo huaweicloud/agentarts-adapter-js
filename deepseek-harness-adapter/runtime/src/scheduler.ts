@@ -1,6 +1,6 @@
-import type { Frame, RoundRequest } from '@agentarts/harness-dsh-shared'
-import type { RoundHandle, RoundOutcome } from '@agentarts/harness-dsh-adapter/scheduler/run.js'
-import type { SchedulerLike } from '@agentarts/harness-dsh-adapter/scheduler/types.js'
+import type {
+    Frame, RoundRequest, RoundHandle, RoundOutcome, SchedulerLike,
+} from '@agentarts/harness-dsh-shared'
 
 import { AsyncQueue } from './async-queue.js'
 import { AcpRuntime } from './runtime.js'
@@ -22,7 +22,13 @@ export class AcpScheduler implements SchedulerLike {
     ) {}
 
     async run(request: RoundRequest, signal?: AbortSignal): Promise<RoundHandle> {
-        const turn = await this.runtime.runTurn(this.mapRequest(request), signal)
+        let turn
+        try {
+            turn = await this.runtime.runTurn(this.mapRequest(request), signal)
+        } catch (error) {
+            // 与 spawn 后端一致：执行层失败通过 outcome 结算，不向协议层抛错
+            return failedHandle(error)
+        }
         const frames = new AsyncQueue<Frame>()
         let final: Frame | null = null
 
@@ -65,6 +71,19 @@ export class AcpScheduler implements SchedulerLike {
             outcome,
             cancel: () => turn.cancel(),
         }
+    }
+}
+
+function failedHandle(error: unknown): RoundHandle {
+    return {
+        frames: (async function* () {})(),
+        outcome: Promise.resolve({
+            ok: false,
+            final: null,
+            error: error instanceof Error ? error.message : String(error),
+            exitCode: null,
+        }),
+        cancel: () => {},
     }
 }
 

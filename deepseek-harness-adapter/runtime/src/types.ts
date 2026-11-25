@@ -49,6 +49,8 @@ export interface SystemPromptConfig {
     mode?: 'append' | 'replace' | 'replace-all'
 }
 
+export type AgentRuntimeType = 'DSH' | 'PI' | 'CODEX'
+
 export interface RuntimeConfig {
     acpCommand: string
     acpArgs: string[]
@@ -71,6 +73,7 @@ export interface RuntimeConfig {
     host: string | null
     port: number
     logLevel: string
+    agentRuntimeType: AgentRuntimeType;
 }
 
 export interface TurnRequest {

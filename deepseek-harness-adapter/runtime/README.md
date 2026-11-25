@@ -8,7 +8,7 @@ approval, AgentArts gateway MCP and system-prompt injection.
 ## Architecture
 
 ```
-adapter handlers (reused)
+adapter 装配层（三端点 + A2A/AG-UI 注册）
   /invocations  /ws  A2A  AG-UI
         │ Frame
         ▼
@@ -24,17 +24,17 @@ AcpScheduler ── RuntimeEvent ── AcpRuntime
 ```
 
 - `/invocations` is implemented here and supports SSE token frames.
-- `/ws`, A2A and AG-UI reuse `@agentarts/harness-dsh-adapter` handlers; they
-  receive adapter `Frame`s projected from the ACP event stream.
-- The runtime scheduler implements the adapter's structural
-  `SchedulerLike` interface, so the upper handlers do not know about ACP.
+- `/ws`, A2A and AG-UI are registered by the adapter package; they receive
+  adapter `Frame`s projected from the ACP event stream.
+- The runtime scheduler implements the `SchedulerLike` contract from
+  `@agentarts/harness-dsh-shared`, so the upper handlers do not know about ACP.
+- App assembly and HTTP bring-up live in the adapter package; this package is a
+  library and has no CLI entry of its own.
 
 ## Source layout
 
 ```
 src/
-├── main.ts                 CLI: .env, app, graceful shutdown
-├── app.ts                  AgentArts app + adapter protocol registration
 ├── invocation-handler.ts   /invocations SSE and stream:false JSON
 ├── scheduler.ts            RuntimeEvent → adapter Frame
 ├── runtime.ts              ACP sessions, prompt turns, token/permission routing
@@ -74,8 +74,10 @@ plugins/
 
 ## Configuration
 
-`npm start` / `node dist/main.js` loads `.env` from the current directory (or
-`DSH_ENV_FILE`); inherited process env wins. See `.env.example`.
+This package has no CLI entry any more: `@agentarts/harness-dsh-adapter` is the
+container main process and starts the ACP backend (`AcpRuntime` + `AcpScheduler`)
+after loading `.env` (or `DSH_ENV_FILE`); inherited process env wins. See
+`.env.example`.
 
 Important variables:
 

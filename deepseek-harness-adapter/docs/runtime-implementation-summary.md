@@ -272,7 +272,8 @@ SSE 事件：
 
 | 文件 | 作用 |
 |---|---|
-| `src/server.js` | AgentArts Runtime 接线、SSE/JSON、ping |
+| `adapter/src/main.ts` | 容器主进程：app 装配、HTTP 启停、SIGINT/SIGTERM；启动 ACP 后端 |
+| `runtime/src/index.ts` | ACP 后端库（`AcpRuntime`/`AcpScheduler`/`loadConfig`），无独立入口 |
 | `src/agent.js` | 请求 plan、prepare、反向请求路由、子进程/隔离 cwd |
 | `src/run.js` | 单轮事件、token/提交对齐、审批、超时/取消 |
 | `src/sessions.js` | 会话复用/恢复/排队/TTL/关闭 |

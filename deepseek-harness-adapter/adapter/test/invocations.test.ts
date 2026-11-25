@@ -8,7 +8,7 @@ import { fakeSpec, listen } from './helpers.js'
 let server: Server | null = null
 async function start(maxConcurrency?: number): Promise<string> {
     const scheduler = new Scheduler({ launchSpec: () => fakeSpec() })
-    const started = await listen(createApp(scheduler, maxConcurrency))
+    const started = await listen(createApp(scheduler, { maxConcurrency }))
     server = started.server
     return `http://${started.base}`
 }
@@ -58,7 +58,7 @@ describe('POST /invocations（真 SDK app + 假子进程）', () => {
 
     it('满载 503（maxConcurrency=1，SDK 行为）', async () => {
         const scheduler = new Scheduler({ launchSpec: () => fakeSpec('slow') })
-        const started = await listen(createApp(scheduler, 1))
+        const started = await listen(createApp(scheduler, { maxConcurrency: 1 }))
         server = started.server
         const base = `http://${started.base}`
         const body = JSON.stringify({ prompt: 'x' })

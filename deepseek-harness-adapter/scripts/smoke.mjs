@@ -82,21 +82,22 @@ async function main() {
         })
         const badBody = await bad.json()
         check('POST /invocations 缺 prompt → 400',
-            bad.status === 400 && badBody.error === 'prompt is required',
+            bad.status === 400 && badBody.error?.message === 'prompt is required',
             `HTTP ${bad.status} ${JSON.stringify(badBody)}`)
 
-        // 500：合法请求但 dsh 不存在 → 真实 spawn 失败路径，响应头带 sessionId
+        // 5xx：合法请求但 dsh 不存在 → ACP 子进程启动失败，响应头带 sessionId
         const res = await fetch(`${base}/invocations`, {
             method: 'POST', headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ sessionId: 's1', prompt: 'hello', eventId: 'e1', attempt: 1 }),
         })
         const body = await res.json()
         const session = res.headers.get('x-hw-agentarts-session-id')
-        check('POST /invocations spawn 失败 → 500 + session 头',
-            res.status === 500 && /spawn failed/.test(body.error || '') && session === 's1',
+        check('POST /invocations ACP 启动失败 → 5xx + session 头',
+            res.status >= 500 && /acp|exited|ENOENT|not recognized/i.test(body.error?.message || '')
+                && session === 's1',
             `HTTP ${res.status} ${JSON.stringify(body)} session=${session}`)
 
-        // WS：非法 payload 回 error 帧且连接可复用；合法 payload 走 spawn 失败 error 帧
+        // WS：非法 payload 回 error 帧且连接可复用；合法 payload 走 ACP 失败 error 帧
         ws = new WebSocket(`ws://127.0.0.1:${port}/ws`)
         await new Promise((resolve, reject) => {
             ws.addEventListener('open', resolve, { once: true })
@@ -106,8 +107,9 @@ async function main() {
         check('WS 非法 payload → error 帧',
             f1.type === 'error' && f1.message === 'prompt is required', JSON.stringify(f1))
         const f2 = await wsRound(ws, { prompt: 'x' })
-        check('WS spawn 失败 → error 帧',
-            f2.type === 'error' && /spawn failed/.test(f2.message || ''), JSON.stringify(f2))
+        check('WS ACP 启动失败 → error 帧',
+            f2.type === 'error' && /acp|exited|ENOENT|not recognized/i.test(f2.message || ''),
+            JSON.stringify(f2))
         check('WS 错误后连接仍可复用', ws.readyState === WebSocket.OPEN,
             `readyState=${ws.readyState}`)
     } finally {

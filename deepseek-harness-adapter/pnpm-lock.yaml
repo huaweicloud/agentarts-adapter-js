@@ -12,6 +12,9 @@ importers:
 
   adapter:
     dependencies:
+      '@agentarts/harness-dsh-runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@agentarts/harness-dsh-shared':
         specifier: workspace:*
         version: link:../shared
@@ -40,9 +43,6 @@ importers:
 
   runtime:
     dependencies:
-      '@agentarts/harness-dsh-adapter':
-        specifier: workspace:*
-        version: link:../adapter
       '@agentarts/harness-dsh-shared':
         specifier: workspace:*
         version: link:../shared

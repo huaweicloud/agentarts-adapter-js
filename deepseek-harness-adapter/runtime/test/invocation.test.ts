@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { AgentArtsRuntimeApp } from '@huaweicloud/agentarts-sdk/sdk/runtime'
 
 import { createInvocationHandler } from '../src/invocation-handler.js'
-import { createRuntimeApp } from '../src/app.js'
 import { loadConfig } from '../src/config.js'
 import { AcpRuntime } from '../src/runtime.js'
 
@@ -64,9 +64,10 @@ describe('runtime /invocations', () => {
         await runtime.dispose()
     })
 
-    it('serves SSE through the composed AgentArts app', async () => {
+    it('serves SSE through a composed AgentArts app', async () => {
         const runtime = makeRuntime()
-        const app = createRuntimeApp(runtime)
+        const app = new AgentArtsRuntimeApp({ maxConcurrency: runtime.config.maxConcurrency })
+        app.entrypoint(createInvocationHandler(runtime))
         const server = app.run('127.0.0.1', 0)
         await new Promise<void>((resolve) => server.once('listening', () => resolve()))
         const address = server.address()

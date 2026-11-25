@@ -21,6 +21,7 @@
     },
     "dependencies": {
         "@agentarts/harness-dsh-shared": "workspace:*",
+        "@agentarts/harness-dsh-runtime": "workspace:*",
         "@huaweicloud/agentarts-sdk": "^0.0.1"
     },
     "devDependencies": {
