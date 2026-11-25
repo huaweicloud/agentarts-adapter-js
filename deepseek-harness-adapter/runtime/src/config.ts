@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import type {
+    AgentRuntimeType,
     GatewayConfig,
     PermissionConfig,
     RuntimeConfig,
@@ -52,7 +53,18 @@ function jsonObject(value: string | undefined): Record<string, string> {
     }
 }
 
+export function loadDotEnv(file = '.env'): void {
+    try {
+        // Node >= 20.12; inherited process.env wins over the file.
+        ;(process as unknown as { loadEnvFile?: (path?: string) => void }).loadEnvFile?.(file)
+    } catch {
+        // Missing .env is normal in container deployments.
+    }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
+    loadDotEnv()
+
     const command =
         stringEnv(env, 'DSH_ACP_COMMAND') ??
         (process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
@@ -135,6 +147,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
                           ? systemModeRaw
                           : 'append',
               }
+    const agentRuntimeType = (stringEnv(env, 'AGENT_RUNTIME_TYPE') || 'DSH') as AgentRuntimeType
 
     return {
         acpCommand: command,
@@ -160,5 +173,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         host: stringEnv(env, 'AGENTARTS_BIND_IP') ?? stringEnv(env, 'HOST') ?? null,
         port: int(stringEnv(env, 'PORT'), 8080),
         logLevel: stringEnv(env, 'DSH_ACP_LOG_LEVEL') ?? 'info',
+        agentRuntimeType,
     }
 }

@@ -1,21 +1,8 @@
-import { pathToFileURL } from 'node:url'
-
 import { createRuntimeApp } from './app.js'
-import { loadConfig } from './config.js'
 import { AcpRuntime } from './runtime.js'
+import { RuntimeConfig } from './types.js'
 
-export function loadDotEnv(file = '.env'): void {
-    try {
-        // Node >= 20.12; inherited process.env wins over the file.
-        ;(process as unknown as { loadEnvFile?: (path?: string) => void }).loadEnvFile?.(file)
-    } catch {
-        // Missing .env is normal in container deployments.
-    }
-}
-
-export function main(): void {
-    loadDotEnv()
-    const config = loadConfig()
+export function createDshApp(config: RuntimeConfig): void {
     const runtime = new AcpRuntime(config)
     const app = createRuntimeApp(runtime, {
         maxConcurrency: config.maxConcurrency,
@@ -38,8 +25,4 @@ export function main(): void {
     }
     process.on('SIGINT', () => void shutdown('SIGINT'))
     process.on('SIGTERM', () => void shutdown('SIGTERM'))
-}
-
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    main()
 }

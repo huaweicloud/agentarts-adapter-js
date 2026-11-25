@@ -11,6 +11,7 @@
         "start": "node dist/main.js"
     },
     "dependencies": {
+        "@agentarts/harness-dsh-runtime": "workspace:*",
         "@agentarts/harness-dsh-shared": "workspace:*",
         "@huaweicloud/agentarts-sdk": "^0.0.1"
     },
