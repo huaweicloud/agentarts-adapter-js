@@ -1,0 +1,8 @@
+# Token-granular ACP updates for dsh-acp-agentarts-runtime.
+#
+# Loaded with `dsh --profile acp --patch <this file>`; the relative specifier
+# resolves next to this patch file. The plugin only acts when the adapter sets
+# DSH_ACP_TOKEN_STREAM=1.
+- insert:
+    - id: acp-token-stream
+      name: './assistant-token-stream.mjs'
