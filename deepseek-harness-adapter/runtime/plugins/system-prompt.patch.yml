@@ -1,0 +1,7 @@
+# Per-session system prompt injector for dsh-acp-agentarts-runtime.
+#
+# The adapter writes one text file per Session into DSH_SYSTEM_PROMPT_DIR.
+# Loaded with `--patch` next to the token-stream patch.
+- insert:
+    - id: system-prompt-injector
+      name: './system-prompt-injector.mjs'

@@ -5,3 +5,6 @@ nohup.out
 dist/
 coverage/
 docs/design/
+.env
+.env.*
+!.env.example

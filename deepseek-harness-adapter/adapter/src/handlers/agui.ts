@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Frame } from '@agentarts/harness-dsh-shared'
-import type { Scheduler } from '../scheduler/index.js'
+import type { SchedulerLike } from '../scheduler/types.js'
 
 /**
  * AG-UI run 输入；用户答复 = 同 sessionId 的新 run，无特殊分支。
@@ -15,7 +15,7 @@ export interface AguiRunInput {
 }
 
 /** AG-UI 处理器。帧 → AG-UI 事件翻译在 SDK，这里只产帧流。 */
-export function createAguiHandler(scheduler: Scheduler) {
+export function createAguiHandler(scheduler: SchedulerLike) {
     return async function* (input: AguiRunInput): AsyncIterable<Frame> {
         const handle = await scheduler.run({
             sessionId: input.sessionId,

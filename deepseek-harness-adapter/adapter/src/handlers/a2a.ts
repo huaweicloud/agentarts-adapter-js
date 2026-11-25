@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Frame } from '@agentarts/harness-dsh-shared'
-import type { Scheduler } from '../scheduler/index.js'
+import type { SchedulerLike } from '../scheduler/types.js'
 
 /** 归一化 A2A 输入（SDK 侧负责把 A2A message 适配成此形状，最终契约以 SDK 接口为准） */
 export interface A2ARequest {
@@ -45,7 +45,7 @@ export class TaskRegistry {
  * 任务生命周期独立于订阅流：退订不取消任务，取消由显式 CancelTask
  * （registry.cancel）触发。
  */
-export function createA2AHandler(scheduler: Scheduler, registry: TaskRegistry) {
+export function createA2AHandler(scheduler: SchedulerLike, registry: TaskRegistry) {
     return async function* (input: A2ARequest): AsyncIterable<Frame> {
         const controller = new AbortController()
         const owner = registry.bind(input.taskId, input.sessionId, controller)

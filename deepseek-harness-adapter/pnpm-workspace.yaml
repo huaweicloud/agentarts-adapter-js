@@ -1,6 +1,7 @@
 packages:
     - shared
     - adapter
+    - runtime
 
 allowBuilds:
     esbuild: true

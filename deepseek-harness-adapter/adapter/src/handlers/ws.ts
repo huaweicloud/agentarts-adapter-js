@@ -1,7 +1,7 @@
 import {
     WebSocketDisconnect, type RequestContext, type WebSocketConnection,
 } from '@huaweicloud/agentarts-sdk/sdk/runtime'
-import type { Scheduler } from '../scheduler/index.js'
+import type { SchedulerLike } from '../scheduler/types.js'
 import { normalizeRequest } from '../request.js'
 
 /**
@@ -10,7 +10,7 @@ import { normalizeRequest } from '../request.js'
  * 取消：信号在入队前建立，排队期间断开也取消。
  * 终态：执行层暂存 driver 的 final/error，outcome 结算后恰好发一个终态。
  */
-export function createWsHandler(scheduler: Scheduler) {
+export function createWsHandler(scheduler: SchedulerLike) {
     return async (ws: WebSocketConnection, ctx: RequestContext): Promise<void> => {
         while (!ws.closed) {
             let payload: any

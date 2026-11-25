@@ -1,0 +1,32 @@
+{
+    "name": "@agentarts/harness-dsh-runtime",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist",
+        "plugins",
+        ".env.example",
+        "README.md"
+    ],
+    "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "start": "node dist/main.js"
+    },
+    "dependencies": {
+        "@agentarts/harness-dsh-adapter": "workspace:*",
+        "@agentarts/harness-dsh-shared": "workspace:*",
+        "@huaweicloud/agentarts-sdk": "^0.0.1"
+    },
+    "devDependencies": {
+        "typescript": "^5.6.0",
+        "vitest": "^3.0.0",
+        "@vitest/coverage-v8": "^3.0.0",
+        "@types/node": "^24.0.0"
+    }
+}

@@ -1,5 +1,5 @@
 import { JsonResponse, type RequestContext } from '@huaweicloud/agentarts-sdk/sdk/runtime'
-import type { Scheduler } from '../scheduler/index.js'
+import type { SchedulerLike } from '../scheduler/types.js'
 import { normalizeRequest } from '../request.js'
 import { SESSION_HEADER } from '../types.js'
 
@@ -7,7 +7,7 @@ import { SESSION_HEADER } from '../types.js'
  * /invocations 处理器。只要 final 帧；
  * 响应头显式携带 sessionId（不依赖 SDK 从请求头回填）。
  */
-export function createInvocationHandler(scheduler: Scheduler) {
+export function createInvocationHandler(scheduler: SchedulerLike) {
     return async (payload: any, context?: RequestContext): Promise<JsonResponse> => {
         let req
         try {
