@@ -1,0 +1,49 @@
+# dsh-agentarts-memory bundle layer.
+#
+# Deployment coordinates come from the environment, not from this row:
+#   AGENTARTS_MEMORY_SPACE_ID          (required)
+#   HUAWEICLOUD_SDK_MEMORY_API_KEY     (required)
+#   HUAWEICLOUD_SDK_REGION             (optional; HUAWEICLOUD_REGION / OS_REGION_NAME also read)
+#   AGENTARTS_MEMORY_DATA_ENDPOINT     (optional)
+#   AGENTARTS_MEMORY_USER_ID           (optional actor_id; must match the writer)
+#   AGENTARTS_MEMORY_RERANK            (optional; 1/true or 0/false)
+#
+# The corresponding keys below are fallbacks for local runs without env exports;
+# the environment wins whenever it is set.
+#
+# Inserts one Host plugin row. Every capability has its own switch so the plugin
+# can be turned off completely without uninstalling it:
+#
+#   enabled: false          -> the whole plugin is inert (no tools, no hooks)
+#   tools.enabled: false    -> no huawei_memory_* tools
+#   recall.enabled: false   -> no automatic recall injection
+#   capture.enabled: false  -> no transcript push after a session ends
+#
+# You can also flip the single row off in Plugins instead of editing this file.
+- insert:
+    - id: dsh-agentarts-memory
+      name: '@laynepeng/dsh-agentarts-memory'
+      config:
+        enabled: true
+        spaceId: ''                  # fallback: $AGENTARTS_MEMORY_SPACE_ID
+        apiKeyEnv: HUAWEICLOUD_SDK_MEMORY_API_KEY
+        region: ''                   # fallback: $HUAWEICLOUD_SDK_REGION
+        endpoint: ''                 # fallback: $AGENTARTS_MEMORY_DATA_ENDPOINT
+        actorId: ''                  # fallback: $AGENTARTS_MEMORY_USER_ID (default dsh-user)
+        assistantId: dsh
+        strategyId: ''
+        strategyType: semantic
+        timeoutMs: 5000
+        rerank: true                 # fallback: $AGENTARTS_MEMORY_RERANK
+        recall:
+          enabled: true
+          topK: 5
+          minScore: 0.35
+          maxInjectTokens: 600
+          cacheMs: 60000
+          minQueryChars: 8
+        tools:
+          enabled: true
+        capture:
+          enabled: false
+          maxMessages: 40

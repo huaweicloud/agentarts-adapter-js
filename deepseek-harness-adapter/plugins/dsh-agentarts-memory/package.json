@@ -1,0 +1,42 @@
+{
+  "name": "@laynepeng/dsh-agentarts-memory",
+  "version": "0.2.0",
+  "description": "Huawei Cloud AgentArts Memory for DeepSeek Harness: switchable semantic recall, memory tools and post-session capture. Self-contained data-plane client, no build step, no dependencies.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "memory",
+    "agentarts",
+    "huaweicloud"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
