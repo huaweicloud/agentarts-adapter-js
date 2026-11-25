@@ -1,0 +1,45 @@
+{
+  "name": "@agentarts/dsh-skill-obs",
+  "version": "0.1.0",
+  "description": "Download AgentArts skills from OBS into the SFS mount directory before the first model call.",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node --check index.js",
+    "test": "node --test \"test/*.test.mjs\"",
+    "clean": "node ../../scripts/clean.mjs"
+  },
+  "dependencies": {
+    "esdk-obs-nodejs": "^3.26.10",
+    "fflate": "^0.8.2",
+    "yaml": "^2.9.1"
+  },
+  "optionalDependencies": {
+    "@huaweicloud/agentarts-sdk": "0.0.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

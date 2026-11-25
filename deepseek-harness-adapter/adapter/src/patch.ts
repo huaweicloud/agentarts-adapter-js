@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -83,6 +84,9 @@ export function renderPatch(
     // The pi-ai route config is composed from several defaults; verify presence only.
     { id: 'llm-pi-ai', disabled: false },
   ];
+  if (config.memory !== undefined) {
+    expected.push({ id: 'dsh-agentarts-memory', disabled: false });
+  }
   const systemRows: UnknownRecord[] = [];
   if (config.systemPrompt.length > 0) {
     const configValue = {
@@ -92,7 +96,9 @@ export function renderPatch(
     expected.push({ id: 'system-prompt', config: configValue });
   }
   const skillRows: UnknownRecord[] = [];
-  if (config.skills !== undefined) {
+  // OBS form ("skillId:skillName:skillVer") is handled by the dsh-skill-obs bundle, which also
+  // supplies customSkillDirs. Only a real local directory is rendered here.
+  if (config.skills !== undefined && !isObsSkillRefs(config.skills)) {
     const configValue = {
       includeDefaultRoots: true,
       customSkillDirs: [config.skills],
@@ -135,6 +141,76 @@ function defaultTemplateDir(): string {
   return fileURLToPath(new URL('../../profile/', import.meta.url));
 }
 
+/** True when agent_metadata.skills is an OBS reference list, not a local directory. */
+function isObsSkillRefs(skills: string): boolean {
+  if (!skills.includes(':')) return false;
+  if (/^[A-Za-z]:[\\/]/.test(skills)) return false;
+  if (skills.includes('/') || skills.includes('\\')) return false;
+  return true;
+}
+
+/** Host bundles vendored into the profile so DSH needs no registry install. */
+const HOST_PLUGINS = [
+  {
+    package: '@agentarts/dsh-agentarts-memory',
+    vendor: 'vendor/dsh-agentarts-memory',
+    source: '../../plugins/dsh-agentarts-memory/',
+  },
+  {
+    package: '@agentarts/dsh-skill-obs',
+    vendor: 'vendor/dsh-skill-obs',
+    source: '../../plugins/dsh-skill-obs/',
+    // esdk-obs-nodejs/fflate/yaml/agentarts-sdk are runtime dependencies of this bundle.
+    withDependencies: true,
+  },
+] as const;
+
+const HOST_PLUGIN_ASSETS = [
+  'package.json',
+  'index.js',
+  'cordis.patch.yml',
+  'src',
+  'locale',
+  'docs',
+  'icon.svg',
+  'README.md',
+  'LICENSE',
+] as const;
+
+/** Copy every zero-dependency Host bundle into the profile so DSH needs no registry install. */
+function materializeHostPlugins(profileDir: string): void {
+  for (const plugin of HOST_PLUGINS) {
+    const sourceDir = fileURLToPath(new URL(plugin.source, import.meta.url));
+    const vendorDir = join(profileDir, plugin.vendor);
+    const moduleDir = join(profileDir, 'node_modules', plugin.package);
+    mkdirSync(vendorDir, { recursive: true });
+    for (const asset of HOST_PLUGIN_ASSETS) {
+      cpSync(join(sourceDir, asset), join(vendorDir, asset), { recursive: true });
+    }
+    // pnpm install turns moduleDir into a symlink; remove it before re-copying the directory,
+    // otherwise cpSync fails with ERR_FS_CP_DIR_TO_NON_DIR.
+    rmSync(moduleDir, { recursive: true, force: true });
+    cpSync(vendorDir, moduleDir, { recursive: true });
+  }
+}
+
+/**
+ * Install the profile's runtime dependencies with pnpm instead of copying the pnpm
+ * link tree: copying breaks the isolated .pnpm resolution, while a real install
+ * produces a correct node_modules (ObsClient and its transitive deps resolve).
+ */
+function installProfileDependencies(profileDir: string): void {
+  const result = spawnSync('pnpm', ['install', '--prod', '--ignore-scripts', '--reporter', 'append-only'], {
+    cwd: profileDir,
+    stdio: 'inherit',
+    shell: true,
+  });
+  if (result.error !== undefined) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`profile dependency install failed (exit ${String(result.status)})`);
+  }
+}
+
 /** Materialize package.json, cordis.patch.yml and the empty cordis.yml under DSH_HOME/profiles/agentrun. */
 export function materializeProfile(
   config: AdapterConfig,
@@ -144,19 +220,32 @@ export function materializeProfile(
   const { patch, expected } = renderPatch(config, template);
   const packageManifest = JSON.parse(readFileSync(join(templateDir, 'package.json'), 'utf8')) as {
     dsh?: { profile?: { bundles?: unknown } };
+    dependencies?: Record<string, string>;
   };
   const bundles = packageManifest.dsh?.profile?.bundles;
-  if (
-    !Array.isArray(bundles) ||
-    bundles[0] !== '@deepseek-ai/dsh-base' ||
-    bundles[1] !== '@deepseek-ai/dsh-headless'
-  ) {
-    throw new Error('profile/package.json must bundle dsh-base followed by dsh-headless');
+  const expectedBundles = [
+    '@deepseek-ai/dsh-base',
+    '@deepseek-ai/dsh-headless',
+    ...HOST_PLUGINS.map((plugin) => plugin.package),
+  ];
+  const bundlesMatch =
+    Array.isArray(bundles) &&
+    bundles.length === expectedBundles.length &&
+    expectedBundles.every((name, index) => bundles[index] === name);
+  const dependenciesMatch = HOST_PLUGINS.every(
+    (plugin) => packageManifest.dependencies?.[plugin.package] === `file:./${plugin.vendor}`,
+  );
+  if (!bundlesMatch || !dependenciesMatch) {
+    throw new Error(
+      'profile/package.json must bundle dsh-base, dsh-headless and every vendored Host plugin',
+    );
   }
   const rootConfig = readFileSync(join(templateDir, 'cordis.yml'), 'utf8');
   const profileDir = join(config.dsh.dshHome, 'profiles', config.dsh.profile);
   mkdirSync(profileDir, { recursive: true });
+  materializeHostPlugins(profileDir);
   writeFileSync(join(profileDir, 'package.json'), `${JSON.stringify(packageManifest, null, 2)}\n`);
+  installProfileDependencies(profileDir);
   writeFileSync(join(profileDir, 'cordis.patch.yml'), patch);
   writeFileSync(join(profileDir, 'cordis.yml'), rootConfig);
   return { profileDir, renderedPatch: patch, expected };

@@ -56,9 +56,12 @@ $env:agent_metadata = '{"agent_metadata":{"system_prompt":"Answer briefly.","ski
 | `MCP_<SERVER>_URL`                                        | 每个 MCP 上游的端点                                                                     |
 | `AGENTRUN_DSH_MCP_<SERVER>_HEADERS`                       | 每个上游的鉴权 header JSON，patch 通过 `!!js` 读取                                      |
 | `AGENTRUN_DATALAKE_*`                                     | 预留给 DataLake 插件的端点与凭证                                                        |
+| `HUAWEICLOUD_SDK_MEMORY_API_KEY`                | 记忆数据面 key，由 DSH 内的记忆插件读取；报告中始终脱敏                     |
+| `AGENTRUN_MEMORY_SPACE_ID`                      | 记忆空间 id；存在时启用记忆插件                                           |
+| `AGENTARTS_MEMORY_DATA_ENDPOINT`                | 记忆数据面端点，私网 `domain_name` 优先                                    |
 | `DSH_HOME` / `DSH_AGENTS_HOME` / `DSH_TELEMETRY_DISABLED` | 隔离 home、隔离共享指令根、关闭 OTel                                                    |
 
-完整常量集中在 [shared/src/env.ts](../shared/src/env.ts)。`agent_metadata` 是 Adapter 的输入（平台 env / 挂载文件 / argv），Adapter 解析后按 §3.5 分类注入子进程：模型 key/端点进 `DEEPSEEK_*`、MCP 端点进 patch 与 `MCP_*_URL`、DataLake 凭证进 `AGENTRUN_DATALAKE_*`；**不把整个 `agent_metadata` JSON 注入子进程 env**，记忆/知识库检索凭证留在 Adapter 做召回，只有召回结果进信封。
+完整常量集中在 [shared/src/env.ts](../shared/src/env.ts)。`agent_metadata` 是 Adapter 的输入（平台 env / 挂载文件 / argv），Adapter 解析后按 §3.5 分类注入子进程：模型 key/端点进 `DEEPSEEK_*`、MCP 端点进 patch 与 `MCP_*_URL`、DataLake 凭证进 `AGENTRUN_DATALAKE_*`；**不把整个 `agent_metadata` JSON 注入子进程 env**，记忆插件通过白名单获得记忆空间、端点和数据面 key，在 DSH 内直接召回；知识库检索凭证仍留在 Adapter，只有召回结果进兼容信封。
 
 MCP 网关使用 `mcp_config`（数组，每个元素一个网关），`protocol_type: "mcp"` 会在渲染 patch 时固定映射为 `dsh-mcp-client` 的 `streamable-http` transport，其 `endpoint` 作为 `url`。网关与模型的 `api_key` 由 `credential_provider_name` 经凭证解析获得：默认走 SDK（`--credential-provider sdk`），demo 无 SDK 构建时用 `--credential-provider static`，从 `AGENTRUN_CREDENTIAL_<NAME>` 环境变量读密钥（`<NAME>` 是 provider_name 的大写化）。`memory_config` 无 `endpoint` 字段，其 `private_access.domain_name`（优先）与 `public_access.domain_name` 作为端点，供 SDK memory 召回使用。
 
@@ -133,9 +136,75 @@ node scripts/smoke.mjs --dsh-command node --dsh-arg D:/DSH_DEV/deepseek-harness-
 
 该 overlay 把模型改为 `cli-mock/cli-mock`，所以 reconcile 会显示一条“额外 patch 覆盖了配置”的警告，而不是把模型差异当作错误。mock 属于 DSH 测试资产，不是生产 provider。
 
-## 5. 当前兼容实现的边界
+## 5. 验证 AgentArts 记忆库生效
 
-- 召回结果已按设计进入输入信封（stdin），但默认 runner 不会读取它；需等 `capability.ts` 接入后才会成为模型上下文。
+准备真实记忆空间 `space_id`、数据面 API key 和模型 key。复制下面的最小配置到仓库外，例如 `D:\temp\agentarts-memory.yaml`，不要提交真实凭证：
+
+```yaml
+agent_metadata:
+  model_config:
+    name: deepseek-chat
+    base_url: https://api.deepseek.com
+    api_key: '' # 用 DEEPSEEK_API_KEY 提供，避免写入文件
+  memory_config:
+    id: your-space-id
+    api_key: your-data-plane-key
+    public_access:
+      domain_name: your-memory-endpoint
+```
+
+如果记忆 key 使用 `credential_provider_name`，去掉内联 `api_key`，并在运行命令中增加 `--credential-provider sdk`。私网端点可改放到 `private_access.domain_name`，它优先于公网端点。长期记忆默认走 `add_messages` 自动提取，不需要 `strategy_id`；只有显式调用 `huawei_memory_save` 直接写 `/memories` 时，后端才可能要求该字段。
+
+### 5.1 先验证插件装配与环境注入
+
+```powershell
+$env:DEEPSEEK_API_KEY = 'your-model-key'
+node adapter/dist/main.js inspect --config D:\temp\agentarts-memory.yaml --dsh-command node --dsh-arg D:\path\to\dsh\lib\bin.js --dsh-home D:\temp\agentarts-memory-home --dsh-cwd D:\temp\agentarts-memory-work
+```
+
+通过标准：
+
+- 顶层 `ok` 和 `inspect.reconcile.ok` 都是 `true`；
+- `inspect.plugins` 包含 `id: dsh-agentarts-memory`、`state: configured`；
+- `child.env.AGENTRUN_MEMORY_SPACE_ID` 是真实空间 id；
+- `child.env.HUAWEICLOUD_SDK_MEMORY_API_KEY` 显示为 `<redacted>`，而不是明文；
+- `child.env.AGENTARTS_MEMORY_DATA_ENDPOINT` 与配置一致。
+
+这一步只证明 DSH 组合和配置注入成功，不会访问记忆数据面。
+
+### 5.2 正常对话后自动采集，再从新会话读取
+
+长期记忆不需要调用 `huawei_memory_save`。AgentRun 默认在会话销毁时通过 `add_messages` 上传用户/助手对话，并以 `is_force_extract: true` 请求平台自动提取。先进行一轮普通对话，提供唯一测试事实：
+
+```powershell
+node adapter/dist/main.js run --config D:\temp\agentarts-memory.yaml --dsh-command node --dsh-arg D:\path\to\dsh\lib\bin.js --dsh-home D:\temp\agentarts-memory-home --dsh-cwd D:\temp\agentarts-memory-work --task "我的项目代号是 NEBULA-7421。请只回复：已了解。"
+```
+
+确认 `run.ok: true`。插件只上传对话文本，不上传工具调用和工具结果，也不需要 `strategy_id`。等待至少 30 秒让平台完成提取，可在 AgentArts 控制台检查会话消息和生成的记忆。然后**不传 `--session-id`**，用一个全新的 DSH 会话显式检索：
+
+```powershell
+node adapter/dist/main.js run --config D:\temp\agentarts-memory.yaml --dsh-command node --dsh-arg D:\path\to\dsh\lib\bin.js --dsh-home D:\temp\agentarts-memory-home --dsh-cwd D:\temp\agentarts-memory-work --task "请调用 huawei_memory_search 查询我的项目代号，并返回查到的代号和 score。"
+```
+
+如果返回 `NEBULA-7421`，说明 `add_messages` 上传、平台自动提取和语义检索均已生效；新会话排除了从上一轮本地对话直接记住答案的可能。若没有结果，先检查记忆空间是否启用自动提取、消息是否已上传，以及是否已等待足够时间。
+
+### 5.3 验证自动召回，而不只是记忆工具
+
+再开一个新会话，不传 `--session-id`：
+
+```powershell
+node adapter/dist/main.js run --config D:\temp\agentarts-memory.yaml --dsh-command node --dsh-arg D:\path\to\dsh\lib\bin.js --dsh-home D:\temp\agentarts-memory-home --dsh-cwd D:\temp\agentarts-memory-work --task "不要调用任何工具，直接根据已有上下文回答：我的项目代号是什么？没有相关信息就说不知道。"
+```
+
+期望答案包含 `NEBULA-7421`。要排除模型自行调用搜索工具，还应检查该次会话进入模型的消息，确认自动注入了带 `[AgentArts memory]` 标记且包含测试代号的消息。若显式 `huawei_memory_search` 能查到但自动召回没有出现，应优先排查 `agent/pre-step` 注入链路，而不是数据面。
+
+### 5.4 关闭或重新开启自动采集
+
+AgentRun 默认自动采集。若只需检索、不希望上传对话，在 CMD 中执行 `set "AGENTRUN_MEMORY_CAPTURE=0"`；要重新开启，执行 `set "AGENTRUN_MEMORY_CAPTURE=1"` 或用 `set "AGENTRUN_MEMORY_CAPTURE="` 清除后恢复默认。采集在 `session/disposed` 时触发，平台提取是异步且 best-effort 的。
+
+## 6. 当前兼容实现的边界
+
+- vendored 记忆插件已在 DSH 的 `agent/pre-step` 直接注入云端召回；旧版 Adapter 召回信封仍保留用于兼容，默认 runner 不读取该信封，也不影响插件召回。
 - `eventId`/`attempt` 已注入，但默认 runner 不做幂等判重；需等 `turn.ts`。
 - `system_prompt` 会追加到 headless 的 personaPrefix；`skills` 映射到官方 `skill-filesystem.customSkillDirs`。
 - `allowed_tools` 仅完成 env 注入，默认 runner 不执行工具白名单；需等 `context.ts`。

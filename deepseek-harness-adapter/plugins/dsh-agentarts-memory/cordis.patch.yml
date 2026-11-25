@@ -1,0 +1,28 @@
+# AgentRun memory bundle.
+# Adapter injects these values into the DSH child environment. No secret is rendered into YAML.
+- insert:
+    - id: dsh-agentarts-memory
+      name: '@agentarts/dsh-agentarts-memory'
+      config:
+        enabled: !!js Boolean(process.env.AGENTRUN_MEMORY_SPACE_ID)
+        spaceId: !!js process.env.AGENTRUN_MEMORY_SPACE_ID || ''
+        apiKeyEnv: HUAWEICLOUD_SDK_MEMORY_API_KEY
+        region: !!js process.env.HUAWEICLOUD_SDK_REGION || 'cn-southwest-2'
+        endpoint: !!js process.env.AGENTARTS_MEMORY_DATA_ENDPOINT || ''
+        actorId: dsh-user
+        assistantId: dsh
+        strategyId: !!js process.env.AGENTRUN_MEMORY_STRATEGY_ID || ''
+        strategyType: semantic
+        timeoutMs: 5000
+        recall:
+          enabled: true
+          topK: 5
+          minScore: 0.35
+          maxInjectTokens: 600
+          cacheMs: 60000
+          minQueryChars: 8
+        tools:
+          enabled: true
+        capture:
+          enabled: !!js process.env.AGENTRUN_MEMORY_CAPTURE !== '0'
+          maxMessages: 40

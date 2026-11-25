@@ -34,6 +34,7 @@ export interface CredentialProvider {
 /** API keys and headers resolved from the platform credential service. */
 export interface ResolvedCredentials {
   readonly modelApiKey?: string;
+  readonly memoryApiKey?: string;
   readonly mcpHeaders: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
@@ -103,6 +104,11 @@ export async function resolveCredentials(
     modelApiKey = await provider.resolveApiKey(modelProvider, signal);
   }
 
+  let memoryApiKey = config.memory?.apiKey;
+  if (memoryApiKey === undefined && config.memory?.credentialProviderName !== undefined) {
+    memoryApiKey = await provider.resolveApiKey(config.memory.credentialProviderName, signal);
+  }
+
   const mcpHeaders: Record<string, Readonly<Record<string, string>>> = {};
   for (const mcp of config.mcps) {
     const headers = { ...mcp.headers };
@@ -112,5 +118,9 @@ export async function resolveCredentials(
     }
     mcpHeaders[mcp.serverName] = headers;
   }
-  return { ...(modelApiKey === undefined ? {} : { modelApiKey }), mcpHeaders };
+  return {
+    ...(modelApiKey === undefined ? {} : { modelApiKey }),
+    ...(memoryApiKey === undefined ? {} : { memoryApiKey }),
+    mcpHeaders,
+  };
 }

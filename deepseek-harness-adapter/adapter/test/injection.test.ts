@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -59,6 +59,7 @@ function fixture() {
             memory_user_id: '',
             id: 'memory-id',
             api_key: 'memory-secret',
+            strategy_id: 'strategy-test',
             auth_type: 'api_key',
             private_access: { domain_name: 'memory.internal', ip: '192.168.255.197' },
             public_access: { domain_name: 'memory.public', ip: '10.83.98.144' },
@@ -81,7 +82,7 @@ function fixture() {
 }
 
 describe('child env injection', () => {
-  it('uses a whitelist and carries only model and MCP values, never agent_metadata or per-round identity', () => {
+  it('uses a whitelist, injects agent_metadata and OBS credentials, and keeps configured model, MCP and memory values', () => {
     const { config } = fixture();
     const env = buildChildEnv(config, {
       PATH: '/bin',
@@ -90,18 +91,34 @@ describe('child env injection', () => {
       AGENTRUN_CONFIG_FILE: '/secret/config',
       AGENTRUN_MEMORY_RECALL: '["do-not-copy-input"]',
       MEMORY_API_KEY: 'do-not-copy',
+      AGENTRUN_MEMORY_CAPTURE: '0',
       AGENTRUN_DATALAKE_ENDPOINT: 'https://datalake.example',
       AGENTRUN_DATALAKE_API_KEY: 'datalake-secret',
       MCP_OTHER_URL: 'https://other.example',
+      HUAWEICLOUD_SDK_AK: 'obs-ak',
+      HUAWEICLOUD_SDK_SK: 'obs-sk',
+      HUAWEICLOUD_SDK_SECURITY_TOKEN: 'obs-sts',
+      AGENTRUN_SKILLS_DIR: '/home/agentarts/skills',
     });
     expect(env['PATH']).toBe('/bin');
+    // Upper-case alias stays out; the document-defined lower-case object is injected for dsh-skill-obs.
     expect(env['AGENT_METADATA']).toBeUndefined();
-    expect(env['agent_metadata']).toBeUndefined();
+    expect(env['agent_metadata']).toBe(JSON.stringify(config.metadata));
     expect(env['AGENTRUN_CONFIG_FILE']).toBeUndefined();
     expect(env['AGENTRUN_MEMORY_RECALL']).toBeUndefined();
     expect(env['MEMORY_API_KEY']).toBeUndefined();
+    expect(env['HUAWEICLOUD_SDK_AK']).toBe('obs-ak');
+    expect(env['HUAWEICLOUD_SDK_SK']).toBe('obs-sk');
+    expect(env['HUAWEICLOUD_SDK_SECURITY_TOKEN']).toBe('obs-sts');
+    expect(env['AGENTRUN_SKILLS_DIR']).toBe('/home/agentarts/skills');
     expect(env['DEEPSEEK_API_KEY']).toBe('model-secret');
     expect(env['MODEL_API_KEY']).toBe('model-secret');
+    expect(env['HUAWEICLOUD_SDK_MEMORY_API_KEY']).toBe('memory-secret');
+    expect(env['AGENTRUN_MEMORY_SPACE_ID']).toBe('memory-id');
+    expect(env['AGENTARTS_MEMORY_DATA_ENDPOINT']).toBe('memory.internal');
+    expect(env['AGENTRUN_MEMORY_STRATEGY_ID']).toBe('strategy-test');
+    expect(env['AGENTRUN_MEMORY_CAPTURE']).toBe('0');
+    expect(env['HUAWEICLOUD_SDK_REGION']).toBe('cn-southwest-2');
     expect(env['DEEPSEEK_BASE_URL']).toBe('https://model.example/v1');
     expect(env['AGENTRUN_DSH_SESSION_ID']).toBeUndefined();
     expect(env['AGENTRUN_DSH_EVENT_ID']).toBeUndefined();
@@ -111,27 +128,75 @@ describe('child env injection', () => {
     expect(env['AGENTRUN_DATALAKE_ENDPOINT']).toBe('https://datalake.example');
     expect(env['DSH_TELEMETRY_DISABLED']).toBe('1');
     expect(redactEnv(env)['DEEPSEEK_API_KEY']).toBe('<redacted>');
+    expect(redactEnv(env)['HUAWEICLOUD_SDK_MEMORY_API_KEY']).toBe('<redacted>');
     expect(redactEnv(env)['AGENTRUN_DSH_MCP_GATEWAY_ID_HEADERS']).toBe('<redacted>');
+  });
+  it('keeps memory configuration and credentials out when memory_config is absent', () => {
+    const config = loadAdapterConfig({
+      env: {},
+      argv: { metadata: '{"agent_metadata":{"model_config":{"name":"m","api_key":"inline"}}}' },
+    });
+    const env = buildChildEnv(config, {
+      HUAWEICLOUD_SDK_MEMORY_API_KEY: 'must-not-leak',
+      AGENTRUN_MEMORY_SPACE_ID: 'must-not-leak',
+      AGENTARTS_MEMORY_DATA_ENDPOINT: 'must-not-leak',
+      AGENTRUN_MEMORY_STRATEGY_ID: 'must-not-leak',
+      AGENTRUN_MEMORY_CAPTURE: '1',
+    });
+    expect(env['HUAWEICLOUD_SDK_MEMORY_API_KEY']).toBeUndefined();
+    expect(env['AGENTRUN_MEMORY_SPACE_ID']).toBeUndefined();
+    expect(env['AGENTARTS_MEMORY_DATA_ENDPOINT']).toBeUndefined();
+    expect(env['AGENTRUN_MEMORY_STRATEGY_ID']).toBeUndefined();
+    expect(env['AGENTRUN_MEMORY_CAPTURE']).toBeUndefined();
   });
 });
 
 describe('profile rendering', () => {
-  it('materializes base+headless, keeps official runner/local stores and never writes secrets', () => {
+  it('materializes base+headless+memory+skill-obs, keeps official runner/local stores and never writes secrets', () => {
     const { config } = fixture();
     const rendered = materializeProfile(config);
     const manifest = JSON.parse(readFileSync(join(rendered.profileDir, 'package.json'), 'utf8'));
     expect(manifest.dsh.profile.bundles).toEqual([
       '@deepseek-ai/dsh-base',
       '@deepseek-ai/dsh-headless',
+      '@agentarts/dsh-agentarts-memory',
+      '@agentarts/dsh-skill-obs',
     ]);
+    expect(manifest.dependencies['@agentarts/dsh-agentarts-memory']).toBe(
+      'file:./vendor/dsh-agentarts-memory',
+    );
+    expect(manifest.dependencies['@agentarts/dsh-skill-obs']).toBe('file:./vendor/dsh-skill-obs');
+    expect(
+      existsSync(
+        join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-agentarts-memory', 'index.js'),
+      ),
+    ).toBe(true);
+    expect(
+      existsSync(
+        join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-skill-obs', 'index.js'),
+      ),
+    ).toBe(true);
+    expect(
+      existsSync(join(rendered.profileDir, 'vendor', 'dsh-skill-obs', 'cordis.patch.yml')),
+    ).toBe(true);
+    const memoryPatch = readFileSync(
+      join(rendered.profileDir, 'vendor', 'dsh-agentarts-memory', 'cordis.patch.yml'),
+      'utf8',
+    );
+    expect(memoryPatch).toContain('id: dsh-agentarts-memory');
+    expect(memoryPatch).toContain("name: '@agentarts/dsh-agentarts-memory'");
+    expect(memoryPatch).toContain("enabled: !!js process.env.AGENTRUN_MEMORY_CAPTURE !== '0'");
+    expect(memoryPatch).not.toContain('memory-secret');
     expect(readFileSync(join(rendered.profileDir, 'cordis.yml'), 'utf8')).toContain('[]');
     expect(rendered.renderedPatch).not.toContain('model-secret');
     expect(rendered.renderedPatch).not.toContain('mcp-secret');
+    expect(rendered.renderedPatch).not.toContain('memory-secret');
     expect(rendered.renderedPatch).not.toContain('id: headless-runner');
     expect(rendered.renderedPatch).toContain('provider: "agentarts-model"');
     expect(rendered.renderedPatch).toContain('model: "test-model"');
     expect(rendered.renderedPatch).toContain('api: openai-completions');
     expect(rendered.renderedPatch).toContain('headers: !!js JSON.parse');
+    expect(rendered.expected).toContainEqual({ id: 'dsh-agentarts-memory', disabled: false });
     const rows = parse(rendered.renderedPatch, {
       customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => `!!js ${value}` }],
     }) as Array<Record<string, unknown>>;

@@ -10,7 +10,6 @@ export default defineConfig({
       '@agentarts/shared': r('./shared/src/index.ts'),
       '@agentarts/helper': r('./helper/src/index.ts'),
       '@agentarts/adapter': r('./adapter/src/index.ts'),
-      '@agentarts/plugin': r('./plugin/src/index.ts'),
       '@agentarts/precheck': r('./precheck/src/index.ts'),
     },
     extensions: ['.ts', '.mts', '.js', '.mjs', '.json'],

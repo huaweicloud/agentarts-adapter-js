@@ -66,6 +66,8 @@ function selectedPlugins(
     'headless-startup',
     'agent-default-model',
     'llm-pi-ai',
+    'dsh-agentarts-memory',
+    'dsh-skill-obs',
     'system-prompt',
     'skill-filesystem',
     'ptc-runtime',
@@ -74,6 +76,7 @@ function selectedPlugins(
     'session-persistence-jsonl',
     'attachment-local',
     'storage-json',
+    'dsh-agentarts-memory',
   ]);
   return plugins.filter(
     (plugin) =>

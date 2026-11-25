@@ -66,13 +66,26 @@ describe('resolveCredentials', () => {
     expect(provider.calls).toEqual(['mcp-provider']);
   });
 
+  it('resolves a missing memory key through its credential provider', async () => {
+    const config = configWith({
+      model_config: { name: 'm', api_key: 'inline' },
+      memory_config: { id: 'space-1', credential_provider_name: 'memory-provider' },
+    });
+    const provider = new FakeProvider();
+    const credentials = await resolveCredentials(config, provider, new AbortController().signal);
+    expect(credentials.memoryApiKey).toBe('key-for-memory-provider');
+    expect(provider.calls).toEqual(['memory-provider']);
+  });
+
   it('resolves no provider calls when everything is inline or absent', async () => {
     const config = configWith({
       model_config: { name: 'm', api_key: 'inline' },
+      memory_config: { id: 'space-1', api_key: 'inline-memory' },
     });
     const provider = new FakeProvider();
     const credentials = await resolveCredentials(config, provider, new AbortController().signal);
     expect(credentials.modelApiKey).toBe('inline');
+    expect(credentials.memoryApiKey).toBe('inline-memory');
     expect(credentials.mcpHeaders).toEqual({});
     expect(provider.calls).toEqual([]);
   });

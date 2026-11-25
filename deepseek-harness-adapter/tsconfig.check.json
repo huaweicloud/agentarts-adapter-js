@@ -7,7 +7,6 @@
       "@agentarts/shared": ["./shared/src/index.ts"],
       "@agentarts/helper": ["./helper/src/index.ts"],
       "@agentarts/adapter": ["./adapter/src/index.ts"],
-      "@agentarts/plugin": ["./plugin/src/index.ts"],
       "@agentarts/precheck": ["./precheck/src/index.ts"]
     }
   },
@@ -18,8 +17,6 @@
     "helper/test/**/*.ts",
     "adapter/src/**/*.ts",
     "adapter/test/**/*.ts",
-    "plugin/src/**/*.ts",
-    "plugin/test/**/*.ts",
     "precheck/src/**/*.ts",
     "precheck/test/**/*.ts"
   ]

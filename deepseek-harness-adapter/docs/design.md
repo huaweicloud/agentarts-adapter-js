@@ -34,7 +34,7 @@ InvocationRequest → SessionQueue → spawn DSH → stdin(信封：prompt + rec
                     stdout NDJSON → final + exitCode → 调用方
 ```
 
-召回结果走输入信封（stdin），不进环境变量；信封还携带 sessionId、eventId、attempt 与 prompt。MCP 网关 `mcp_config`（数组）的 `protocol_type: "mcp"` 渲染为 `dsh-mcp-client` 的 `streamable-http` transport。
+云端记忆召回由 vendored `@agentarts/dsh-agentarts-memory` 在 DSH 的 `agent/pre-step` 直接注入，旧版 Adapter 召回结果仍走输入信封（stdin）供后续自研 runner 使用。信封还携带 sessionId、eventId、attempt 与 prompt。记忆数据面 key 只按白名单进入子进程 env，不写入 profile；MCP 网关 `mcp_config`（数组）的 `protocol_type: "mcp"` 渲染为 `dsh-mcp-client` 的 `streamable-http` transport。
 
 ## 当前兼容模式与目标模式的差异
 

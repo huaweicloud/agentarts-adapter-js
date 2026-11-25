@@ -53,6 +53,9 @@ function parseDocument(text: string, source: string): UnknownRecord {
   } catch (error) {
     throw new Error(`${source}: invalid JSON/YAML: ${String(error)}`);
   }
+  // An empty or fully-commented document is "no configuration", not an error:
+  // env/argv layers can still supply agent_metadata on top of it.
+  if (value === null || value === undefined) return { agent_metadata: {} };
   const record = requireRecord(value, source);
   if (record['agent_metadata'] === undefined) return { agent_metadata: record };
   requireRecord(record['agent_metadata'], `${source}.agent_metadata`);
@@ -225,10 +228,18 @@ function normalizeMemory(metadata: UnknownRecord): MemorySettings | undefined {
   const endpoint =
     optionalString(privateAccess, 'domain_name', 'agent_metadata.memory_config.private_access') ??
     optionalString(publicAccess, 'domain_name', 'agent_metadata.memory_config.public_access');
+  const credentialProviderName = optionalString(
+    memory,
+    'credential_provider_name',
+    'agent_metadata.memory_config',
+  );
+  const strategyId = optionalString(memory, 'strategy_id', 'agent_metadata.memory_config');
   return {
     spaceId,
     ...(endpoint ? { endpoint } : {}),
     ...(apiKey ? { apiKey } : {}),
+    ...(credentialProviderName ? { credentialProviderName } : {}),
+    ...(strategyId ? { strategyId } : {}),
   };
 }
 
@@ -278,8 +289,7 @@ export function loadAdapterConfig(options: LoadConfigOptions = {}): AdapterConfi
     optionalString(modelConfig, 'name', 'agent_metadata.model_config') ?? DEFAULT_MODEL;
   const rawBaseUrl = optionalString(modelConfig, 'base_url', 'agent_metadata.model_config');
   const protocol = resolveModelProtocol(env[MODEL_PROVIDER_ENV]);
-  const baseUrl =
-    rawBaseUrl === undefined ? undefined : resolveModelBaseUrl(rawBaseUrl, protocol);
+  const baseUrl = rawBaseUrl === undefined ? undefined : resolveModelBaseUrl(rawBaseUrl, protocol);
   const apiKey = optionalString(modelConfig, 'api_key', 'agent_metadata.model_config');
   const credentialProviderName = optionalString(
     modelConfig,
@@ -378,6 +388,47 @@ export function buildChildEnv(
     env[MODEL_ENV.apiKey] = modelApiKey;
   }
   if (config.model.baseUrl !== undefined) env[MODEL_ENV.baseUrl] = config.model.baseUrl;
+  if (config.memory !== undefined) {
+    env['AGENTRUN_MEMORY_SPACE_ID'] = config.memory.spaceId;
+    if (config.memory.endpoint !== undefined) {
+      env['AGENTARTS_MEMORY_DATA_ENDPOINT'] = config.memory.endpoint;
+    }
+    const memoryApiKey =
+      credentials?.memoryApiKey ??
+      config.memory.apiKey ??
+      parentEnv['HUAWEICLOUD_SDK_MEMORY_API_KEY'];
+    if (memoryApiKey !== undefined) env['HUAWEICLOUD_SDK_MEMORY_API_KEY'] = memoryApiKey;
+    const strategyId = config.memory.strategyId ?? parentEnv['AGENTRUN_MEMORY_STRATEGY_ID'];
+    if (strategyId !== undefined && strategyId !== '') {
+      env['AGENTRUN_MEMORY_STRATEGY_ID'] = strategyId;
+    }
+    env['HUAWEICLOUD_SDK_REGION'] =
+      parentEnv['HUAWEICLOUD_SDK_REGION'] ??
+      parentEnv['HUAWEICLOUD_REGION'] ??
+      parentEnv['OS_REGION_NAME'] ??
+      'cn-southwest-2';
+    const capture = parentEnv['AGENTRUN_MEMORY_CAPTURE'];
+    if (capture === '0' || capture === '1') env['AGENTRUN_MEMORY_CAPTURE'] = capture;
+  }
+  // dsh-skill-obs reads agent_metadata (skills/user_bucket) and the OBS signing credentials.
+  env['agent_metadata'] = JSON.stringify(config.metadata);
+  for (const key of [
+    'HUAWEICLOUD_SDK_AK',
+    'HUAWEICLOUD_SDK_SK',
+    'HUAWEICLOUD_SDK_SECURITY_TOKEN',
+    'HUAWEICLOUD_SDK_REGION',
+    'HUAWEICLOUD_REGION',
+    'OS_REGION_NAME',
+    'AGENTRUN_SKILLS_DIR',
+    'AGENTRUN_SKILLS',
+    'AGENTRUN_USER_BUCKET',
+    'AGENTRUN_SKILLS_OBS_ENDPOINT',
+    'OBS_ENDPOINT',
+    'HUAWEICLOUD_SDK_AGENTIDENTITY_ENDPOINT',
+  ]) {
+    const value = parentEnv[key];
+    if (value !== undefined) env[key] = value;
+  }
   for (const mcp of config.mcps) {
     env[mcpUrlKey(mcp.serverName)] = mcp.endpoint;
     const headers = credentials?.mcpHeaders[mcp.serverName] ?? mcp.headers;
@@ -449,6 +500,18 @@ export function configDiagnostics(config: AdapterConfig): UnknownRecord {
     allowedTools: config.allowedTools,
     skills: config.skills,
     mcps: redactUnknown(config.mcps),
+    memory:
+      config.memory === undefined
+        ? undefined
+        : {
+            spaceId: config.memory.spaceId,
+            endpoint: config.memory.endpoint,
+            strategyId: config.memory.strategyId,
+            apiKey:
+              config.memory.apiKey === undefined
+                ? '<from credential provider or env>'
+                : '<redacted>',
+          },
     dsh: { ...config.dsh, args: [...config.dsh.args] },
   };
 }

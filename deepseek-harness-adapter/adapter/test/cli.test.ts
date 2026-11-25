@@ -55,7 +55,10 @@ describe('demo CLI', () => {
     expect(envelope.prompt).toBe('cli demo task');
     expect(envelope.recall.memory).toEqual([{ content: 'memory' }]);
     expect(envelope.eventId).toBe('demo-event-1');
-    expect(report.child.env.agent_metadata).toBeUndefined();
+    // agent_metadata is injected for dsh-skill-obs, with nested credentials redacted in the report.
+    const metadata = JSON.parse(report.child.env.agent_metadata);
+    expect(metadata.model_config.name).toBe('cli-test-model');
+    expect(metadata.model_config.api_key).toBe('<redacted>');
     expect(report.child.env.DEEPSEEK_API_KEY).toBe('<redacted>');
     expect(report.probe.frames[1]).toMatchObject({ type: 'probe', task: 'cli demo task' });
   });

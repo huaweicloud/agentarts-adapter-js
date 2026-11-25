@@ -38,6 +38,10 @@ export interface MemorySettings {
   /** Endpoint preferred from private_access.domain_name, falling back to public_access.domain_name. */
   readonly endpoint?: string;
   readonly apiKey?: string;
+  /** Credential provider used when the platform does not inline the memory API key. */
+  readonly credentialProviderName?: string;
+  /** Strategy id required by backends that reject direct writes without one. */
+  readonly strategyId?: string;
 }
 
 /** DSH executable resolution, separate from agent_metadata so images can use their own launcher. */

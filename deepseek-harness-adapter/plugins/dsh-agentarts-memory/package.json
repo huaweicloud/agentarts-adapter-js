@@ -1,0 +1,37 @@
+{
+  "name": "@agentarts/dsh-agentarts-memory",
+  "version": "0.2.0",
+  "description": "Huawei Cloud AgentArts Memory for the AgentRun DSH profile: semantic recall, memory tools and optional post-session capture.",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node --check index.js",
+    "test": "node --test \"test/*.test.mjs\"",
+    "clean": "node ../../scripts/clean.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

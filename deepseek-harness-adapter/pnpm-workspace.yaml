@@ -2,7 +2,7 @@ packages:
   - 'shared'
   - 'helper'
   - 'adapter'
-  - 'plugin'
+  - 'plugins/*'
   - 'precheck'
 
 allowBuilds:

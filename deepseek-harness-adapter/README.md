@@ -10,10 +10,11 @@
 deepseek-harness-adapter/
 ├── shared/     # env 键、公共类型
 ├── adapter/    # config、patch、recall、ops、scheduler、demo CLI
-├── plugin/     # 后续 DSH 自研插件包
+├── plugins/    # DSH Host 插件集合（每个插件一个独立目录）
+│   └── dsh-agentarts-memory/  # AgentArts 记忆：召回、工具、自动采集
 ├── helper/     # 12/30 工具沙箱 helper
 ├── precheck/   # 装包扫描
-├── profile/    # agentrun 三件套模板（base + headless）
+├── profile/    # agentrun 三件套模板（base + headless + memory）
 ├── scripts/    # demo、render-check、smoke、child-probe
 └── docs/       # 实现、验收和未确定项
 ```
@@ -28,7 +29,7 @@ deepseek-harness-adapter/
 
 ```bash
 pnpm install
-pnpm test        # vitest 全量测试
+pnpm test        # vitest 全量测试 + 记忆插件 node:test 测试
 pnpm typecheck   # 全仓类型检查
 pnpm build       # 构建各包到 dist/
 pnpm format      # prettier 格式化
@@ -53,5 +54,5 @@ node scripts/smoke.mjs --dsh-command node --dsh-arg /absolute/path/to/dsh/lib/bi
 
 - pnpm workspace、TypeScript（NodeNext）、vitest、prettier。
 - 不修改 DSH 源码；通过 profile 三件套和 patch 装配。
-- 子进程使用白名单 env；召回走 env，任务走 stdin。
+- 子进程使用白名单 env；记忆插件在 DSH 内召回，任务与兼容信封走 stdin。
 - MCP 只支持 `streamable-http`，拒绝 SSE 和 stdio。
