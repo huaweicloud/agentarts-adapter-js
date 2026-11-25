@@ -12,7 +12,7 @@
     },
     "dependencies": {
         "@agentarts/harness-dsh-shared": "workspace:*",
-        "@huaweicloud/agentarts-sdk": "file:../../../agentarts-sdk-js/packages/agentarts-sdk"
+        "@huaweicloud/agentarts-sdk": "^0.0.1"
     },
     "devDependencies": {
         "typescript": "^5.6.0",
