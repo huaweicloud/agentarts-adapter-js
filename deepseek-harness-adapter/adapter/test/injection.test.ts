@@ -188,7 +188,6 @@ describe('profile rendering', () => {
     expect(rendered.renderedPatch).toContain('provider: "agentarts-model"');
     expect(rendered.renderedPatch).toContain('model: "test-model"');
     expect(rendered.renderedPatch).toContain('api: openai-completions');
-    expect(rendered.renderedPatch).toContain('headers: !!js JSON.parse');
     expect(rendered.expected).toContainEqual({ id: 'dsh-agentarts-memory', disabled: false });
     const rows = parse(rendered.renderedPatch, {
       customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => `!!js ${value}` }],
@@ -199,10 +198,8 @@ describe('profile rendering', () => {
       'workflow-ptc',
       'tool-workflow',
     ]);
-    const inserted = rows.find((row) => Array.isArray(row['insert']))?.['insert'] as Array<
-      Record<string, unknown>
-    >;
-    expect(inserted).toHaveLength(1);
-    expect(inserted[0]?.['name']).toBe('@deepseek-ai/dsh-mcp-client');
+    // ACP 下 MCP 通过 session/new 的 mcpServers 传入，不再渲染 dsh-mcp-client 行。
+    expect(rows.some((row) => Array.isArray(row['insert']))).toBe(false);
+    expect(rendered.renderedPatch).not.toContain('dsh-mcp-client');
   });
 });

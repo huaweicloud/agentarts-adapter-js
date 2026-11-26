@@ -8,7 +8,6 @@ import { stringify } from 'yaml';
 
 import { MODEL_API_KEY_ENV } from '@agentarts/harness-dsh-shared';
 
-import { mcpHeadersEnvName } from './config.js';
 import type { AdapterConfig, ExpectedPluginRow, UnknownRecord } from './types.js';
 
 /** Profile files rendered before DSH starts. */
@@ -20,29 +19,6 @@ export interface RenderedProfile {
 
 function yamlRows(rows: readonly UnknownRecord[]): string {
   return rows.length === 0 ? '' : stringify(rows).trimEnd();
-}
-
-function mcpHeaderExpression(mcp: AdapterConfig['mcps'][number]): string {
-  return `!!js JSON.parse(process.env.${mcpHeadersEnvName(mcp.serverName)} || '{}')`;
-}
-
-function mcpRows(config: AdapterConfig): UnknownRecord[] {
-  return config.mcps.map((mcp) => ({
-    id: `agentrun-mcp-${mcp.serverName}`,
-    name: '@deepseek-ai/dsh-mcp-client',
-    config: {
-      transport: 'streamable-http',
-      serverName: mcp.serverName,
-      url: mcp.endpoint,
-      headers: `__AGENTRUN_MCP_HEADERS_${mcp.serverName}__`,
-      toolCallTimeoutMs: 30_000,
-      closeTimeoutMs: 5_000,
-      expandTemplates: false,
-      failOnStartupError: true,
-      toolLoading: 'eager',
-      catalogDescriptionMaxLength: 160,
-    },
-  }));
 }
 
 /** Route the model through dsh-llm-pi-ai's generic provider, keyed by config.model.provider. */
@@ -71,7 +47,7 @@ export function renderPatch(
   template: string,
 ): { patch: string; expected: readonly ExpectedPluginRow[] } {
   const expected: ExpectedPluginRow[] = [
-    { id: 'headless-runner', disabled: false },
+    // ACP 路线没有 headless-runner（由 dsh-acp-app 提供执行），不要对它做存在性对账。
     { id: 'ptc-runtime', disabled: true },
     { id: 'workflow-ptc', disabled: true },
     { id: 'tool-workflow', disabled: true },
@@ -108,26 +84,9 @@ export function renderPatch(
     skillRows.push({ id: 'skill-filesystem', config: configValue });
     expected.push({ id: 'skill-filesystem', config: configValue });
   }
-  const inserted = mcpRows(config);
-  if (inserted.length > 0) {
-    for (const [index, row] of inserted.entries()) {
-      expected.push({
-        id: String(row['id']),
-        config: {
-          ...(row['config'] as UnknownRecord),
-          headers: mcpHeaderExpression(config.mcps[index]!),
-        },
-      });
-    }
-  }
-  let mcpPatch = inserted.length > 0 ? yamlRows([{ insert: inserted }]) : '';
-  for (const [index, row] of inserted.entries()) {
-    const configValue = row['config'] as UnknownRecord;
-    mcpPatch = mcpPatch.replace(
-      String(configValue['headers']),
-      mcpHeaderExpression(config.mcps[index]!),
-    );
-  }
+  // ACP 下 MCP 通过 session/new 的 mcpServers 传入，不再渲染 dsh-mcp-client 行。
+  const inserted: UnknownRecord[] = [];
+  const mcpPatch = '';
   const patch = template
     .replaceAll('{{MODEL_PROVIDER}}', JSON.stringify(config.model.provider))
     .replaceAll('{{MODEL_NAME}}', JSON.stringify(config.model.name))
