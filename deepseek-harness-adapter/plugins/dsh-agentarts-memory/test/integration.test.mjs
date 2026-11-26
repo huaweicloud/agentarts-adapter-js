@@ -430,6 +430,7 @@ test('capture pushes turns when a session is disposed', async () => {
     disposed.handler({
       id: 'session-1',
       firstLiveSeq: 0,
+      seq: 2,
       events: [
         { type: 'user/message', data: { content: [{ type: 'text', text: '你好' }] } },
         { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '你好，有什么可以帮你' }] } } },
@@ -443,6 +444,7 @@ test('capture pushes turns when a session is disposed', async () => {
 
     assert.equal(stub.requests.length, 2)
     assert.equal(stub.requests[1].url, '/v1/core/spaces/space-1/sessions/session-1/messages')
+    assert.equal(stub.requests[1].body.idempotency_key, 'session-1:2')
     assert.deepEqual(stub.requests[1].body.messages, [
       { role: 'user', parts: [{ type: 'text', text: '你好' }] },
       { role: 'assistant', parts: [{ type: 'text', text: '你好，有什么可以帮你' }] },

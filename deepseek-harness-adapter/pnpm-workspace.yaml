@@ -2,6 +2,7 @@ packages:
     - shared
     - adapter
     - runtime
+    - plugins/*
 
 allowBuilds:
     esbuild: true

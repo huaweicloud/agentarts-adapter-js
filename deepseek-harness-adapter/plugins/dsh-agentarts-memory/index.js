@@ -16,7 +16,7 @@
  * official SDK cannot be a dependency here because its `package.json` carries
  * a `workspace:*` agentidentity dependency, which pnpm refuses through `file:`.
  *
- * @module @laynepeng/dsh-agentarts-memory
+ * @module @agentarts/dsh-agentarts-memory
  */
 
 import { checkReady, describeSwitches, resolveConfig } from './src/config.js'

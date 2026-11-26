@@ -83,7 +83,12 @@ export function applyCapture(ctx, gateway, config, readiness, log) {
         const turns = renderTurns(events, config.capture.maxMessages)
         if (turns.length === 0) return
 
-        const pushed = await gateway.pushMessages(String(session.id), turns)
+        // A stable idempotency key cannot reuse the session id: the cloud would treat
+        // every append after the first as a duplicate retry. Bind it to the session's
+        // current seq (monotonic per append) so each capture is a distinct, accepted push.
+        const pushed = await gateway.pushMessages(String(session.id), turns, {
+          idempotencyKey: `${session.id}:${session.seq}`,
+        })
         log.info(`captured ${pushed} message(s) from session ${String(session.id)}`)
       } catch (error) {
         log.warn(`capture failed for session ${String(session?.id)}: ${error instanceof Error ? error.message : String(error)}`)

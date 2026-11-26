@@ -1,5 +1,5 @@
 {
-  "name": "@laynepeng/dsh-agentarts-memory",
+  "name": "@agentarts/dsh-agentarts-memory",
   "version": "0.2.0",
   "description": "Huawei Cloud AgentArts Memory for DeepSeek Harness: switchable semantic recall, memory tools and post-session capture. Self-contained data-plane client, no build step, no dependencies.",
   "private": true,

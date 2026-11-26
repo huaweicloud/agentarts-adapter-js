@@ -93,19 +93,18 @@ export function applyTools(ctx, gateway, config) {
         additionalProperties: false,
         required: ['results', 'total'],
         properties: {
-          total: { type: 'integer', required: true },
+          total: { type: 'integer' },
           results: {
             type: 'array',
-            required: true,
             items: {
               type: 'object',
               additionalProperties: false,
               required: ['score', 'content', 'strategy_type', 'id'],
               properties: {
-                score: { type: 'number', required: true },
-                content: { type: 'string', required: true },
-                strategy_type: { type: 'string', required: true },
-                id: { type: 'string', required: true },
+                score: { type: 'number' },
+                content: { type: 'string' },
+                strategy_type: { type: 'string' },
+                id: { type: 'string' },
               },
             },
           },
@@ -169,9 +168,9 @@ export function applyTools(ctx, gateway, config) {
         additionalProperties: false,
         required: ['session_id', 'messages', 'content'],
         properties: {
-          session_id: { type: 'string', required: true },
-          messages: { type: 'integer', required: true },
-          content: { type: 'string', required: true },
+          session_id: { type: 'string' },
+          messages: { type: 'integer' },
+          content: { type: 'string' },
         },
       },
       render(_args, value) {

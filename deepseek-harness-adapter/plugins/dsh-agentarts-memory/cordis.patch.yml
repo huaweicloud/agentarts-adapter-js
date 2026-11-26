@@ -24,7 +24,7 @@
 # You can also flip the single row off in Plugins instead of editing this file.
 - insert:
     - id: dsh-agentarts-memory
-      name: '@laynepeng/dsh-agentarts-memory'
+      name: '@agentarts/dsh-agentarts-memory'
       config:
         enabled: true
         spaceId: ''                  # fallback: $AGENTARTS_MEMORY_SPACE_ID
