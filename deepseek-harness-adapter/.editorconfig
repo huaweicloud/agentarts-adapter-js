@@ -1,35 +1,7 @@
-# EditorConfig — https://editorconfig.org
-# 统一 agentarts-harness-adapter 仓库的编辑器行为。
-
 root = true
-
 [*]
-charset = utf-8
-end_of_line = lf
-insert_final_newline = true
-trim_trailing_whitespace = true
 indent_style = space
-indent_size = 2
-
-[*.{ts,mts,cts,js,mjs,cjs,jsx,tsx}]
-indent_size = 2
+indent_size = 4
 max_line_length = 100
-
-[*.{json,jsonc}]
-indent_size = 2
-
-[*.{yml,yaml}]
-indent_size = 2
-
-[*.md]
-trim_trailing_whitespace = false
-max_line_length = off
-
-[*.{sh,bash}]
-indent_size = 2
-
-[{node_modules,dist,coverage}/**]
-indent_style = unset
-indent_size = unset
-trim_trailing_whitespace = unset
-insert_final_newline = unset
+end_of_line = lf
+charset = utf-8

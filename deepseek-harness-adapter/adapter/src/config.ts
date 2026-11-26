@@ -13,7 +13,7 @@ import {
   MODEL_ENV,
   MODEL_PROVIDER_ENV,
   SENSITIVE_ENV_PATTERN,
-} from '@agentarts/shared';
+} from './adapter-env.js';
 import { parse } from 'yaml';
 
 import type {
@@ -23,7 +23,7 @@ import type {
   MemorySettings,
   ModelProtocol,
   UnknownRecord,
-} from './types.js';
+} from './adapter-types.js';
 import type { ResolvedCredentials } from './credential.js';
 
 /** Inputs to configuration resolution. */

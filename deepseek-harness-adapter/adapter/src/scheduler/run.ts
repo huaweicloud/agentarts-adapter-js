@@ -1,366 +1,134 @@
-import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-
-import { buildChildEnv } from '../config.js';
+import { spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
 import {
-  resolveCredentials,
-  SdkCredentialProvider,
-  type CredentialProvider,
-  type ResolvedCredentials,
-} from '../credential.js';
-import { AdapterOps } from '../ops.js';
-import { materializeProfile } from '../patch.js';
-import type {
-  AdapterConfig,
-  AdapterFrame,
-  ChildRunResult,
-  InvocationRequest,
-  RecallBundle,
-  ReconcileReport,
-} from '../types.js';
-import { SessionQueue } from './session-queue.js';
+    parseFrame, type Frame, type FinalFrame, type ErrorFrame, type LaunchSpec,
+} from '@agentarts/harness-dsh-shared'
+import { createFrameChannel } from './frame-channel.js'
 
-/** Fully resolved one-shot process invocation. */
-export interface ChildProcessSpec {
-  readonly command: string;
-  readonly args: readonly string[];
-  readonly cwd: string;
-  readonly env: Record<string, string>;
-  readonly stdin: string;
-  readonly timeoutMs: number;
+/** 一轮超时默认值（先按 5 分钟，待与平台对齐后调整） */
+export const DEFAULT_ROUND_TIMEOUT_MS = 300_000
+/** 取消宽限期：先 SIGTERM 让 DSH 清理（该路径可能以 0 退出），宽限后未退出再 SIGKILL */
+export const CANCEL_GRACE_MS = 5_000
+
+export interface RoundOutcome {
+    ok: boolean
+    final: FinalFrame | null
+    error: string | null
+    exitCode: number | null
 }
 
-/** Raw text result used for --dump-config. */
-export interface TextChildResult {
-  readonly exitCode: number | null;
-  readonly signal: NodeJS.Signals | null;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly error?: string;
-  readonly durationMs: number;
+export interface RoundHandle {
+    /** 帧流，单消费者；子进程结束且缓冲 drain 后迭代完成 */
+    frames: AsyncIterable<Frame>
+    /** 子进程实际 close 后结算（队列名额随之释放） */
+    outcome: Promise<RoundOutcome>
+    /** 幂等取消：与外部 AbortSignal 收敛到同一 terminate 路径 */
+    cancel(): void
 }
 
-interface CapturedProcess {
-  readonly exitCode: number | null;
-  readonly signal: NodeJS.Signals | null;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly error?: string;
-  readonly durationMs: number;
-}
-
-const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
-const MAX_STDERR_BYTES = 256 * 1024;
-const MAX_FRAME_BYTES = 1024 * 1024;
-
-async function spawnCaptured(
-  spec: ChildProcessSpec,
-  onStdout?: (chunk: string) => void,
-): Promise<CapturedProcess> {
-  const startedAt = Date.now();
-  const child = spawn(spec.command, [...spec.args], {
-    cwd: spec.cwd,
-    env: spec.env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-    shell: false,
-  });
-  let stdout = '';
-  let stderr = '';
-  let processError: string | undefined;
-  let timedOut = false;
-  let killTimer: NodeJS.Timeout | undefined;
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string) => {
-    if (Buffer.byteLength(stdout) + Buffer.byteLength(chunk) > MAX_STDOUT_BYTES) {
-      processError ??= `child stdout exceeded ${MAX_STDOUT_BYTES} bytes`;
-      child.kill();
-      return;
+/** 从未 spawn 的轮次（排队期间/ spawn 前被取消）：空帧流 + 已结算 outcome */
+export function cancelledHandle(error: string): RoundHandle {
+    return {
+        frames: (async function* () {})(),
+        outcome: Promise.resolve({ ok: false, final: null, error, exitCode: null }),
+        cancel: () => {},
     }
-    stdout += chunk;
-    onStdout?.(chunk);
-  });
-  child.stderr.on('data', (chunk: string) => {
-    if (Buffer.byteLength(stderr) < MAX_STDERR_BYTES) stderr += chunk;
-  });
-  child.once('error', (error) => {
-    processError ??= `failed to spawn ${spec.command}: ${error.message}`;
-  });
-  child.stdin.on('error', (error) => {
-    processError ??= `failed to write child stdin: ${error.message}`;
-  });
-  child.stdin.end(spec.stdin);
-  const timer = setTimeout(() => {
-    timedOut = true;
-    processError ??= `child timed out after ${spec.timeoutMs}ms`;
-    child.kill();
-    killTimer = setTimeout(() => child.kill('SIGKILL'), 5_000);
-    killTimer.unref();
-  }, spec.timeoutMs);
-  timer.unref();
-  const result = await new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>(
-    (resolve) => {
-      child.once('close', (exitCode, signal) => resolve({ exitCode, signal }));
-    },
-  );
-  clearTimeout(timer);
-  if (killTimer !== undefined) clearTimeout(killTimer);
-  if (timedOut) processError ??= `child timed out after ${spec.timeoutMs}ms`;
-  return {
-    exitCode: result.exitCode,
-    signal: result.signal,
-    stdout,
-    stderr:
-      Buffer.byteLength(stderr) >= MAX_STDERR_BYTES ? `${stderr}\n<stderr truncated>` : stderr,
-    ...(processError === undefined ? {} : { error: processError }),
-    durationMs: Date.now() - startedAt,
-  };
 }
 
-/** Run DSH --dump-config or another text-producing child with the same lifecycle guarantees. */
-export async function runChildText(spec: ChildProcessSpec): Promise<TextChildResult> {
-  const result = await spawnCaptured(spec);
-  return { ...result };
-}
+/**
+ * 执行一轮：spawn 子进程，stdin 写任务，stdout 逐行解析帧，
+ * 按退出码与 final 帧判成败。执行层不缓存结果——幂等判重在子进程（driver）内。
+ * 取消：signal 或 handle.cancel() 触发优雅终止，首个终止原因只记录一次。
+ */
+export function runRound(
+    spec: LaunchSpec, task: string, timeoutMs = DEFAULT_ROUND_TIMEOUT_MS, signal?: AbortSignal,
+): RoundHandle {
+    // spawn 前已取消：不启动子进程
+    if (signal?.aborted) return cancelledHandle('round cancelled before spawn')
 
-interface FrameParser {
-  readonly frames: AdapterFrame[];
-  readonly error?: string;
-  push(chunk: string): void;
-  finish(): void;
-}
+    let final: FinalFrame | null = null
+    let errorFrame: ErrorFrame | null = null
+    let stderrTail = ''
+    let failReason: string | null = null
+    let settled = false
 
-function createFrameParser(): FrameParser {
-  const frames: AdapterFrame[] = [];
-  let buffer = '';
-  let lineNumber = 0;
-  let error: string | undefined;
-  const consume = (line: string): void => {
-    lineNumber += 1;
-    const normalized = line.endsWith('\r') ? line.slice(0, -1) : line;
-    if (normalized.trim() === '') return;
-    if (Buffer.byteLength(normalized) > MAX_FRAME_BYTES) {
-      error ??= `stdout frame ${lineNumber} exceeded ${MAX_FRAME_BYTES} bytes`;
-      return;
+    const child = spawn(spec.command, spec.args, {
+        env: spec.env, stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    // 字节水位背压：慢消费者使队列超高水位 → 暂停子进程 stdout，
+    // 管道写满后 driver 自然阻塞；消费回落到低水位 → 恢复
+    const channel = createFrameChannel({
+        onPause: () => child.stdout.pause(),
+        onResume: () => child.stdout.resume(),
+    })
+    let graceTimer: NodeJS.Timeout | null = null
+
+    // 取消入口：先记原因再 SIGTERM，宽限后 SIGKILL；已退出/已结算则 no-op（幂等）
+    const terminate = (reason: string) => {
+        failReason ??= reason
+        if (settled || child.exitCode !== null) return
+        child.kill('SIGTERM')
+        graceTimer = setTimeout(() => {
+            if (child.exitCode === null) child.kill('SIGKILL')
+        }, CANCEL_GRACE_MS)
     }
-    try {
-      const value: unknown = JSON.parse(normalized);
-      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        error ??= `stdout frame ${lineNumber} is not a JSON object`;
-        return;
-      }
-      frames.push(value as AdapterFrame);
-    } catch {
-      error ??= `stdout frame ${lineNumber} is not valid NDJSON`;
-    }
-  };
-  return {
-    frames,
-    get error() {
-      return error;
-    },
-    push(chunk: string): void {
-      buffer += chunk;
-      while (true) {
-        const newline = buffer.indexOf('\n');
-        if (newline < 0) break;
-        consume(buffer.slice(0, newline));
-        buffer = buffer.slice(newline + 1);
-      }
-      if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES) {
-        error ??= `stdout frame ${lineNumber + 1} exceeded ${MAX_FRAME_BYTES} bytes`;
-        buffer = '';
-      }
-    },
-    finish(): void {
-      if (buffer.length > 0) consume(buffer);
-      buffer = '';
-    },
-  };
-}
+    const onCancel = () => terminate('round cancelled by consumer')
+    signal?.addEventListener('abort', onCancel, { once: true })
 
-function completedFinal(frames: readonly AdapterFrame[]): { final?: AdapterFrame; error?: string } {
-  const final = [...frames].reverse().find((frame) => frame.type === 'final');
-  if (final === undefined) return { error: 'child exited without a final frame' };
-  const reason = final['reason'];
-  if (
-    typeof reason !== 'object' ||
-    reason === null ||
-    (reason as Record<string, unknown>)['kind'] !== 'completed'
-  ) {
-    return { final, error: 'final frame did not complete successfully' };
-  }
-  return { final };
-}
+    const outcome = new Promise<RoundOutcome>((resolve) => {
+        const timer = setTimeout(() => {
+            failReason ??= `round timeout after ${timeoutMs}ms`
+            child.kill('SIGKILL')
+        }, timeoutMs)
 
-/** Spawn a child, parse NDJSON and require exitCode=0 plus final.reason.kind=completed. */
-export async function runChildProcess(spec: ChildProcessSpec): Promise<ChildRunResult> {
-  const parser = createFrameParser();
-  const result = await spawnCaptured(spec, parser.push);
-  parser.finish();
-  const terminal = completedFinal(parser.frames);
-  const frameError = parser.frames.find((frame) => frame.type === 'error');
-  const errors = [result.error, parser.error, terminal.error];
-  if (frameError !== undefined)
-    errors.push(`child error frame: ${String(frameError['message'] ?? 'unknown error')}`);
-  if (result.exitCode !== 0)
-    errors.push(
-      `child exited with code ${String(result.exitCode)}${result.signal ? ` (${result.signal})` : ''}`,
-    );
-  const error = errors.filter((item): item is string => item !== undefined).join('; ');
-  return {
-    ok: error === '',
-    exitCode: result.exitCode,
-    signal: result.signal,
-    frames: parser.frames,
-    ...(terminal.final === undefined ? {} : { final: terminal.final }),
-    stderr: result.stderr,
-    ...(error === '' ? {} : { error }),
-    durationMs: result.durationMs,
-  };
-}
+        child.on('error', (err) => {
+            clearTimeout(timer)
+            failReason ??= `spawn failed: ${err.message}`
+            channel.end()
+            settled = true
+            resolve({ ok: false, final: null, error: failReason, exitCode: null })
+        })
 
-function launcherArgs(config: AdapterConfig): string[] {
-  const args = [...config.dsh.args, '--profile', config.dsh.profile];
-  for (const patch of config.dsh.patches) args.push('--patch', patch);
-  return args;
-}
+        const lines = createInterface({ input: child.stdout })
+        lines.on('line', (line) => {
+            const r = parseFrame(line)
+            if (r.ok) {
+                // 终态帧暂存校验，不进帧流；退出后由 outcome 统一给出唯一终态
+                if (r.frame.type === 'final') { final ??= r.frame; return }
+                if (r.frame.type === 'error') { errorFrame ??= r.frame; return }
+                channel.push(r.frame, Buffer.byteLength(line))
+            } else if (r.reason === 'invalid') {
+                // 协议被破坏：立即判失败并终止子进程
+                failReason ??= `invalid frame line: ${line.slice(0, 200)}`
+                child.kill('SIGKILL')
+            }
+        })
 
-/** Serialize one invocation with its recall into the stdin envelope written to the child. */
-function envelopeJson(invocation: InvocationRequest, recall: RecallBundle): string {
-  return JSON.stringify({
-    sessionId: invocation.sessionId,
-    eventId: invocation.eventId,
-    attempt: invocation.attempt,
-    prompt: invocation.prompt,
-    recall,
-  });
-}
+        child.stderr.on('data', (chunk) => {
+            stderrTail = (stderrTail + String(chunk)).slice(-8192)
+        })
 
-/** Build the exact DSH argv/env/stdin for dump or official headless execution. */
-export function buildDshProcessSpec(
-  config: AdapterConfig,
-  invocation: InvocationRequest,
-  recall: RecallBundle,
-  mode: 'dump' | 'run',
-  credentials?: ResolvedCredentials,
-): ChildProcessSpec {
-  const args = launcherArgs(config);
-  if (mode === 'dump') args.push('--dump-config');
-  else {
-    args.push('--json', '--approval-policy', 'never');
-    if (invocation.sessionId !== undefined) args.push('--session-id', invocation.sessionId);
-    args.push('-');
-  }
-  return {
-    command: config.dsh.command,
-    args,
-    cwd: config.dsh.cwd,
-    env: buildChildEnv(config, process.env, credentials),
-    stdin: mode === 'run' ? envelopeJson(invocation, recall) : '',
-    timeoutMs: config.dsh.timeoutMs,
-  };
-}
+        child.on('close', (code) => {
+            clearTimeout(timer)
+            if (graceTimer) clearTimeout(graceTimer)
+            signal?.removeEventListener('abort', onCancel)
+            channel.end()
+            settled = true
+            // 终态综合判定：exit 0 + 合法 final + 无失败原因 + 无 driver error 帧。
+            // final 后 exit 1（flush 失败）→ 失败，客户端绝不会收到 final。
+            // SIGTERM 清理路径可能以 0 退出，但 failReason 已置 → 仍判失败。
+            const ok = code === 0 && final !== null && failReason === null && errorFrame === null
+            const error = ok ? null
+                : failReason
+                    ?? errorFrame?.message
+                    ?? (code !== 0 ? `exit ${code}: ${stderrTail}` : 'no final frame')
+            resolve({ ok, final, error, exitCode: code })
+        })
 
-/** Successful DSH composition and its ops report. */
-export interface PreparationResult {
-  readonly snapshot: NonNullable<ReturnType<AdapterOps['snapshot']>>;
-  readonly reconcile: ReconcileReport;
-  readonly stderr: string;
-  readonly durationMs: number;
-}
+        // 子进程早退时 stdin 可能 EPIPE，忽略（成败由 close/error 判定）
+        child.stdin.on('error', () => {})
+        child.stdin.end(spec.encodeStdin(task))
+    })
 
-/** Profile + process launcher. prepare runs once per Adapter instance; each run creates a fresh child. */
-export class DshLauncher {
-  readonly ops = new AdapterOps();
-  private preparation?: PreparationResult;
-
-  constructor(
-    readonly config: AdapterConfig,
-    readonly credentialProvider: CredentialProvider = SdkCredentialProvider.fromRegion(),
-  ) {}
-
-  /** Materialize the profile and ask the real DSH CLI to compose and validate it without mounting plugins. */
-  async prepare(invocation: InvocationRequest, recall: RecallBundle): Promise<PreparationResult> {
-    mkdirSync(this.config.dsh.cwd, { recursive: true });
-    const rendered = materializeProfile(this.config);
-    const spec = buildDshProcessSpec(this.config, invocation, recall, 'dump');
-    const result = await runChildText(spec);
-    if (result.exitCode !== 0 || result.error !== undefined) {
-      throw new Error(
-        `DSH --dump-config failed: ${result.error ?? `exit ${String(result.exitCode)}`}; ${result.stderr}`,
-      );
-    }
-    const snapshot = this.ops.capture(rendered, result.stdout, this.config.dsh.patches.length > 0);
-    this.preparation = {
-      snapshot,
-      reconcile: this.ops.reconcile(),
-      stderr: result.stderr,
-      durationMs: result.durationMs,
-    };
-    return this.preparation;
-  }
-
-  private async requirePreparation(
-    invocation: InvocationRequest,
-    recall: RecallBundle,
-  ): Promise<PreparationResult> {
-    const preparation = this.preparation ?? (await this.prepare(invocation, recall));
-    if (!preparation.reconcile.ok)
-      throw new Error(`profile reconciliation failed: ${JSON.stringify(preparation.reconcile)}`);
-    return preparation;
-  }
-
-  /** Run one task through the official headless runner. */
-  async run(invocation: InvocationRequest, recall: RecallBundle): Promise<ChildRunResult> {
-    await this.requirePreparation(invocation, recall);
-    const credentials = await resolveCredentials(
-      this.config,
-      this.credentialProvider,
-      AbortSignal.timeout(this.config.dsh.timeoutMs),
-    );
-    return runChildProcess(
-      buildDshProcessSpec(this.config, invocation, recall, 'run', credentials),
-    );
-  }
-
-  /** Run the demo probe with exactly the same env/stdin, without substituting it for DSH --dump-config. */
-  async probe(
-    probePath: string,
-    invocation: InvocationRequest,
-    recall: RecallBundle,
-  ): Promise<ChildRunResult> {
-    await this.requirePreparation(invocation, recall);
-    const credentials = await resolveCredentials(
-      this.config,
-      this.credentialProvider,
-      AbortSignal.timeout(this.config.dsh.timeoutMs),
-    );
-    const dshSpec = buildDshProcessSpec(this.config, invocation, recall, 'run', credentials);
-    return runChildProcess({ ...dshSpec, command: process.execPath, args: [probePath] });
-  }
-}
-
-/** Session-serializing pool; the SDK-owned global concurrency limit remains outside this package. */
-export class AdapterPool {
-  private readonly queue = new SessionQueue();
-
-  constructor(readonly launcher: DshLauncher) {}
-
-  /** Serialize every operation for one session; fresh sessions use eventId as their temporary queue key. */
-  async run(invocation: InvocationRequest, recall: RecallBundle): Promise<ChildRunResult> {
-    const key = invocation.sessionId ?? `new:${invocation.eventId}`;
-    return this.queue.runExclusive(key, () => this.launcher.run(invocation, recall));
-  }
-
-  /** Demo counterpart of run, retaining the same session serialization. */
-  async probe(
-    probePath: string,
-    invocation: InvocationRequest,
-    recall: RecallBundle,
-  ): Promise<ChildRunResult> {
-    const key = invocation.sessionId ?? `new:${invocation.eventId}`;
-    return this.queue.runExclusive(key, () => this.launcher.probe(probePath, invocation, recall));
-  }
+    return { frames: channel.frames, outcome, cancel: onCancel }
 }

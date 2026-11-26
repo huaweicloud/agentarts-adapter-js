@@ -1,11 +1,7 @@
 node_modules/
-dist/
-coverage/
 *.log
-*.tsbuildinfo
 nohup.out
 .claude/
-.DS_Store
-.idea/
-.env
-.agent_identity.json
+dist/
+coverage/
+docs/design/

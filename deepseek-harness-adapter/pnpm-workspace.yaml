@@ -1,9 +1,14 @@
 packages:
-  - 'shared'
-  - 'helper'
-  - 'adapter'
-  - 'plugins/*'
-  - 'precheck'
+    - shared
+    - adapter
+    - runtime
+    - plugins/*
 
 allowBuilds:
-  esbuild: true
+    esbuild: true
+
+# 与 SDK 仓一致：上游 core@3.1.222 运行期 require('uuid') 但未声明依赖，此处补上
+packageExtensions:
+    '@huaweicloud/huaweicloud-sdk-core':
+        dependencies:
+            uuid: ^9.0.0

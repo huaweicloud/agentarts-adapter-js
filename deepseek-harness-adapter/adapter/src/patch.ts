@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 import { stringify } from 'yaml';
 
-import { MODEL_API_KEY_ENV } from '@agentarts/shared';
+import { MODEL_API_KEY_ENV } from './adapter-env.js';
 
 import { mcpHeadersEnvName } from './config.js';
-import type { AdapterConfig, ExpectedPluginRow, UnknownRecord } from './types.js';
+import type { AdapterConfig, ExpectedPluginRow, UnknownRecord } from './adapter-types.js';
 
 /** Profile files rendered before DSH starts. */
 export interface RenderedProfile {

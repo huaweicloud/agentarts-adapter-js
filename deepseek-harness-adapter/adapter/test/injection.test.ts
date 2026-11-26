@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 
 import { buildChildEnv, loadAdapterConfig, redactEnv } from '../src/config.js';
 import { materializeProfile } from '../src/patch.js';
-import type { InvocationRequest } from '../src/types.js';
+import type { InvocationRequest } from '../src/adapter-types.js';
 
 const cleanup: string[] = [];
 afterEach(() => {
