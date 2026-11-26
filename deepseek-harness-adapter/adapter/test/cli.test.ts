@@ -43,8 +43,6 @@ describe('demo CLI', () => {
       '{"agent_metadata":{"model_config":{"name":"cli-test-model","api_key":"cli-secret"}}}',
       '--task',
       'cli demo task',
-      '--memory-recall',
-      '[{"content":"memory"}]',
     ]);
     expect(exitCode).toBe(0);
     const report = JSON.parse(output.join('')) as Record<string, any>;
@@ -53,7 +51,7 @@ describe('demo CLI', () => {
     expect(report.inspect.pluginCount).toBeGreaterThan(0);
     const envelope = JSON.parse(report.child.stdin);
     expect(envelope.prompt).toBe('cli demo task');
-    expect(envelope.recall.memory).toEqual([{ content: 'memory' }]);
+    expect(envelope.recall.memory).toEqual([]);
     expect(envelope.eventId).toBe('demo-event-1');
     // agent_metadata is injected for dsh-skill-obs, with nested credentials redacted in the report.
     const metadata = JSON.parse(report.child.env.agent_metadata);

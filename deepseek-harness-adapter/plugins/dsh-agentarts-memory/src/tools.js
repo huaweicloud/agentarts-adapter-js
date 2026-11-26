@@ -32,8 +32,8 @@ function own(ctx, register) {
 
 /** Tool guidance appended to the system prompt when the tools are on. */
 export const TOOLS_PROMPT = [
-  'huawei_memory_search searches a shared cloud long-term memory (Huawei Cloud AgentArts) by meaning;',
-  'huawei_memory_save writes one durable fact to that same memory so future sessions can find it.',
+  'huawei_memory_search searches the shared cloud long-term memory (Huawei Cloud AgentArts) by meaning;',
+  'huawei_memory_save stores a fact as short-term memory for this session, and the platform extracts long-term memories from it automatically.',
   'Search before asking the user to repeat context. Save only durable facts the user would want remembered',
   '(preferences, project decisions, corrections) — never one-off requests, secrets or credentials.',
 ].join(' ')
@@ -48,7 +48,7 @@ export function toolFailure(error) {
   if (error instanceof GatewayError) {
     if (error.code === 'unconfigured') {
       return new Error(
-        `AgentArts memory is not configured: ${error.message}. Set spaceId in the plugin config and the API key in the environment.`,
+        `AgentArts memory is not configured: ${error.message}. Export AGENTARTS_MEMORY_SPACE_ID and HUAWEICLOUD_SDK_MEMORY_API_KEY.`,
       )
     }
     return new Error(error.message)
@@ -145,7 +145,7 @@ export function applyTools(ctx, gateway, config) {
   own(ctx, () => ctx.tools.register({
     name: 'huawei_memory_save',
     description:
-      'Save one durable fact to the shared cloud long-term memory (Huawei Cloud AgentArts) so later sessions can recall it. Use for stable preferences, project decisions and corrections only.',
+      'Save a fact as short-term memory for this session. The platform later extracts long-term memories from it automatically.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -155,35 +155,34 @@ export function applyTools(ctx, gateway, config) {
           type: 'string',
           description: 'The fact to remember, as one or two self-contained sentences.',
         },
-        strategy_type: {
-          type: 'string',
-          description: 'Memory type: user_preference (default), semantic, episodic, summary or procedural.',
-        },
       },
     },
     output: {
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'content'],
+        required: ['accepted'],
         properties: {
-          id: { type: 'string' },
-          content: { type: 'string' },
+          accepted: { type: 'integer' },
         },
       },
       render(_args, value) {
-        const id = value?.id === '' ? '(no id returned)' : value?.id
-        return [{ type: 'text', text: `Saved to cloud memory ${id}: ${value?.content ?? ''}` }]
+        return [{ type: 'text', text: `Saved to short-term memory (${value?.accepted ?? 0} message(s)); the platform will extract long-term memories from it.` }]
       },
     },
-    async execute(args) {
+    async execute(args, exec) {
       const raw = args !== null && typeof args === 'object' ? args : {}
       const content = String(raw.content ?? '').trim()
       if (content === '') throw new Error('content must not be empty')
-      const strategyType = typeof raw.strategy_type === 'string' ? raw.strategy_type : 'user_preference'
+      const sessionId = exec?.agent?.session?.id
+      if (sessionId === undefined || String(sessionId) === '') {
+        throw new Error('short-term memory save requires an active session')
+      }
+      const key = `${String(sessionId)}:${Date.now()}`
 
       try {
-        return await gateway.save({ content, strategyType })
+        const accepted = await gateway.pushMessages(String(sessionId), [{ role: 'user', content }], key)
+        return { accepted }
       } catch (error) {
         throw toolFailure(error)
       }

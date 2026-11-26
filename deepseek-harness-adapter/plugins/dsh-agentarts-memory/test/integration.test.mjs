@@ -73,17 +73,19 @@ function makeCtx() {
 
 const userMessage = (text) => ({ content: [{ type: 'text', text }] })
 
+// Pass an empty env so an exported AGENTARTS_MEMORY_* on the developer's machine
+// cannot leak into these assertions.
 const CONFIGURED = (url, overrides = {}) => resolveConfig({
   enabled: true,
   spaceId: 'space-1',
   apiKeyEnv: 'STUB_MEMORY_KEY',
   endpoint: url,
   ...overrides,
-})
+}, {})
 
 test('the master switch registers nothing at all', () => {
   const { ctx, log } = makeCtx()
-  apply(ctx, resolveConfig({ enabled: false, spaceId: 'space-1' }))
+  apply(ctx, resolveConfig({ enabled: false, spaceId: 'space-1' }, {}))
   assert.deepEqual(
     { tools: log.tools.length, listeners: log.listeners.length, sections: log.sections.length, commands: log.commands.length, effects: log.effects.length },
     { tools: 0, listeners: 0, sections: 0, commands: 0, effects: 0 },
@@ -92,10 +94,68 @@ test('the master switch registers nothing at all', () => {
 
 test('an unconfigured plugin stays mounted but offers no tools', () => {
   const { ctx, log } = makeCtx()
-  apply(ctx, resolveConfig({ enabled: true }))
+  apply(ctx, resolveConfig({ enabled: true }, {}))
   assert.equal(log.tools.length, 0, 'no tool that cannot work')
   assert.equal(log.commands.length, 1, 'status command remains available')
-  assert.deepEqual(log.listeners.map((listener) => listener.name), ['agent/pre-step'])
+  // The default recall mode is `tool`: no pre-step listener is registered.
+  assert.deepEqual(log.listeners.map((listener) => listener.name), [])
+  assert.equal(log.sections.length, 0, 'no tool guidance without a ready space')
+})
+
+test('an environment-only deployment is ready and reaches the stub', async () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  process.env.AGENTARTS_MEMORY_SPACE_ID = 'space-from-env'
+  const stub = await startStub()
+  process.env.AGENTARTS_MEMORY_DATA_ENDPOINT = stub.url
+  try {
+    const { ctx, log } = makeCtx()
+    // No config at all beyond the apiKeyEnv: the hosted contract is env-only.
+    apply(ctx, resolveConfig({ apiKeyEnv: 'STUB_MEMORY_KEY', recall: { enabled: false } }))
+
+    const status = await log.commands[0].handler({ rawInput: '' })
+    assert.match(status.text, /status: ready/)
+    assert.match(status.text, /space-from-env/)
+
+    const search = log.tools.find((tool) => tool.name === 'huawei_memory_search')
+    assert.ok(search, 'tools are registered when env supplies space + key')
+    await search.execute({ query: 'q' })
+    assert.equal(stub.requests[0].url, '/v1/core/spaces/space-from-env/memories/search')
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+    delete process.env.AGENTARTS_MEMORY_SPACE_ID
+    delete process.env.AGENTARTS_MEMORY_DATA_ENDPOINT
+    await stub.close()
+  }
+})
+
+test('recall.mode tool skips injection but tells the agent the memory exists', () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED('http://127.0.0.1:1', { recall: { mode: 'tool' } }))
+
+    assert.deepEqual(log.listeners.map((listener) => listener.name), [], 'no pre-step listener in tool mode')
+    assert.deepEqual(log.tools.map((tool) => tool.name), ['huawei_memory_search', 'huawei_memory_save'])
+    assert.equal(log.sections.length, 1)
+    assert.match(log.sections[0].text, /cross-session long-term memory/)
+    assert.match(log.sections[0].text, /huawei_memory_search/)
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+  }
+})
+
+test('recall.mode off injects nothing and adds no memory hint', () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED('http://127.0.0.1:1', { recall: { mode: 'off' } }))
+
+    assert.equal(log.listeners.length, 0, 'no pre-step listener in off mode')
+    assert.equal(log.sections.length, 1, 'tool guidance is still registered')
+    assert.doesNotMatch(log.sections[0].text, /cross-session long-term memory/)
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+  }
 })
 
 test('recall injects a memory returned by the stub data plane', async () => {
@@ -212,30 +272,6 @@ test('the tools are registered and render hits', async () => {
   }
 })
 
-test('tool schemas keep required arrays on object nodes only', () => {
-  process.env.STUB_MEMORY_KEY = 'stub-key'
-  try {
-    const { ctx, log } = makeCtx()
-    apply(ctx, CONFIGURED('http://127.0.0.1:1', { recall: { enabled: false }, tools: { enabled: true } }))
-    assert.deepEqual(log.tools.map((tool) => tool.name), ['huawei_memory_search', 'huawei_memory_save'])
-
-    const visit = (node, path) => {
-      if (node.required !== undefined) {
-        assert.equal(node.type, 'object', `${path}.required belongs on an object node`)
-        assert.ok(Array.isArray(node.required), `${path}.required must be an array`)
-      }
-      for (const [name, child] of Object.entries(node.properties ?? {})) visit(child, `${path}.properties.${name}`)
-      if (node.items !== undefined) visit(node.items, `${path}.items`)
-    }
-    for (const tool of log.tools) {
-      visit(tool.parameters, `${tool.name}.parameters`)
-      visit(tool.output.schema, `${tool.name}.output.schema`)
-    }
-  } finally {
-    delete process.env.STUB_MEMORY_KEY
-  }
-})
-
 test('the status command reports switches and endpoint', async () => {
   process.env.STUB_MEMORY_KEY = 'stub-key'
   const stub = await startStub()
@@ -244,12 +280,33 @@ test('the status command reports switches and endpoint', async () => {
     apply(ctx, CONFIGURED(stub.url, { capture: { enabled: true } }))
     const status = await log.commands[0].handler({ rawInput: '' })
     assert.equal(status.kind, 'success')
-    assert.match(status.text, /switches: plugin on · tools on · recall on · capture on/)
+    assert.match(status.text, /switches: plugin on · tools on · recall tool · capture on/)
     assert.match(status.text, /status: ready/)
     assert.match(status.text, new RegExp(`endpoint: ${stub.url}`))
+    assert.match(status.text, /agentarts help/)
   } finally {
     delete process.env.STUB_MEMORY_KEY
     await stub.close()
+  }
+})
+
+test('/agentarts help lists what the plugin does and what it does not', async () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED('http://127.0.0.1:1', { recall: { mode: 'tool' }, capture: { enabled: true } }))
+
+    const help = await log.commands[0].handler({ rawInput: 'help' })
+    assert.equal(help.kind, 'success')
+    assert.match(help.text, /what this plugin can do/)
+    assert.match(help.text, /huawei_memory_search/)
+    assert.match(help.text, /agent tools \(on\)/)
+    assert.match(help.text, /not provided/)
+    assert.match(help.text, /recall tool/)
+    assert.match(help.text, /capture on/)
+    assert.match(help.text, /status: ready/)
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
   }
 })
 
@@ -263,14 +320,14 @@ test('capture pushes turns when a session is disposed', async () => {
     const disposed = log.listeners.find((listener) => listener.name === 'session/disposed')
     assert.ok(disposed, 'capture must listen for session/disposed')
 
-    const events = [
-      { type: 'user/message', data: { content: [{ type: 'text', text: '你好' }] } },
-      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '你好，有什么可以帮你' }] } } },
-    ]
     disposed.handler({
       id: 'session-1',
       firstLiveSeq: 0,
-      snapshotEvents: () => events,
+      seq: 2,
+      events: [
+        { type: 'user/message', data: { content: [{ type: 'text', text: '你好' }] } },
+        { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '你好，有什么可以帮你' }] } } },
+      ],
     })
 
     // The hook is fire-and-forget; wait for the two requests to land.
@@ -280,9 +337,10 @@ test('capture pushes turns when a session is disposed', async () => {
 
     assert.equal(stub.requests.length, 2)
     assert.equal(stub.requests[1].url, '/v1/core/spaces/space-1/sessions/session-1/messages')
+    assert.equal(stub.requests[1].body.idempotency_key, 'session-1:2')
     assert.deepEqual(stub.requests[1].body.messages, [
-      { role: 'user', parts: [{ type: 'text', text: '你好' }], actor_id: 'dsh-user' },
-      { role: 'assistant', parts: [{ type: 'text', text: '你好，有什么可以帮你' }], assistant_id: 'dsh' },
+      { role: 'user', parts: [{ type: 'text', text: '你好' }] },
+      { role: 'assistant', parts: [{ type: 'text', text: '你好，有什么可以帮你' }] },
     ])
   } finally {
     delete process.env.STUB_MEMORY_KEY

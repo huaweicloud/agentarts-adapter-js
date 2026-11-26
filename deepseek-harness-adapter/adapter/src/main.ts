@@ -8,7 +8,6 @@ import { ADAPTER_ENV } from '@agentarts/shared';
 import { configDiagnostics, loadAdapterConfig, redactEnv } from './config.js';
 import { SdkCredentialProvider, StaticCredentialProvider } from './credential.js';
 import { materializeProfile } from './patch.js';
-import { recallWithFallback, SdkRecallProvider, StaticRecallProvider } from './recall.js';
 import {
   AdapterPool,
   buildDshProcessSpec,
@@ -16,6 +15,7 @@ import {
   ResidentProcess,
 } from './scheduler/index.js';
 import type { ResidentSpec } from './scheduler/index.js';
+import { EMPTY_RECALL } from './types.js';
 import type { InvocationRequest, InvocationEnvelope } from './types.js';
 
 const USAGE = `Usage:
@@ -39,11 +39,8 @@ Options:
   --session-id <id>            Existing DSH Session to resume; omit for a fresh Session
   --event-id <id>              Idempotency identity (default: demo-event-1)
   --attempt <n>                Platform attempt number (default: 1)
-  --memory-recall <json>       Static demo memory recall array
-  --knowledge-recall <json>    Static demo knowledge recall array
   --probe <path>               Demo child probe (default: scripts/child-probe.mjs)
   --credential-provider <p>    sdk (default in production) | static (demo env, no SDK build)
-  --recall-provider <p>        sdk (memory recall via SDK) | static (demo env)
 `;
 
 function defaultProbePath(): string {
@@ -105,11 +102,8 @@ export async function runCli(args: readonly string[] = process.argv.slice(2)): P
       'session-id': { type: 'string' },
       'event-id': { type: 'string' },
       attempt: { type: 'string' },
-      'memory-recall': { type: 'string' },
-      'knowledge-recall': { type: 'string' },
       probe: { type: 'string' },
       'credential-provider': { type: 'string' },
-      'recall-provider': { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -146,18 +140,9 @@ export async function runCli(args: readonly string[] = process.argv.slice(2)): P
     eventId: values['event-id'] ?? process.env[ADAPTER_ENV.eventId] ?? 'demo-event-1',
     attempt: positiveInteger(values['attempt'] ?? process.env[ADAPTER_ENV.attempt], 1, '--attempt'),
   };
-  const recallEnv = { ...process.env };
-  if (values['memory-recall'] !== undefined)
-    recallEnv[ADAPTER_ENV.memoryRecallInput] = values['memory-recall'];
-  if (values['knowledge-recall'] !== undefined)
-    recallEnv[ADAPTER_ENV.knowledgeRecallInput] = values['knowledge-recall'];
-  const recallProvider =
-    values['recall-provider'] === 'sdk'
-      ? new SdkRecallProvider()
-      : new StaticRecallProvider(recallEnv);
-  const recall = await recallWithFallback(recallProvider, { config, invocation }, (message) =>
-    process.stderr.write(`agentarts-adapter: ${message}\n`),
-  );
+  // Recall is performed inside the DSH process by dsh-agentarts-memory (agent/pre-step);
+  // the Adapter no longer retrieves memories, so the envelope carries an empty recall bundle.
+  const recall = EMPTY_RECALL;
   const credentialProvider =
     values['credential-provider'] === 'sdk'
       ? SdkCredentialProvider.fromRegion()
@@ -168,7 +153,6 @@ export async function runCli(args: readonly string[] = process.argv.slice(2)): P
   const base = {
     config: configDiagnostics(config),
     invocation,
-    recall: { memoryItems: recall.memory.length, knowledgeItems: recall.knowledgeBases.length },
     child: {
       command: processSpec.command,
       args: processSpec.args,

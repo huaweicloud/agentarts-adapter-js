@@ -75,7 +75,7 @@ export interface InvocationRequest {
   readonly attempt: number;
 }
 
-/** Recall is produced in Adapter and serialized into child env, never fetched with child-held credentials. */
+/** Recall bundle carried in the invocation envelope. Retrieval happens in the DSH process (dsh-agentarts-memory); the Adapter always supplies an empty bundle. */
 export interface RecallBundle {
   readonly memory: readonly unknown[];
   readonly knowledgeBases: readonly unknown[];

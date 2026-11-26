@@ -16,9 +16,24 @@ plugin installs from the repository with no build step and no dependency:
 | append messages | `POST /v1/core/spaces/{space_id}/sessions/{session_id}/messages` |
 
 Authentication is `Authorization: Bearer <api key>`; no request signing is
-involved on the data plane. The base URL resolves in this order: the `endpoint`
-config, then `$AGENTARTS_MEMORY_DATA_ENDPOINT`, then
-`https://memory.<region>.huaweicloud-agentarts.com`.
+involved on the data plane, so `HUAWEICLOUD_SDK_AK` / `HUAWEICLOUD_SDK_SK` are
+not needed.
+
+Deployment coordinates resolve from the **environment first**, then the bundle
+patch row as a fallback: `AGENTARTS_MEMORY_SPACE_ID` (space),
+`HUAWEICLOUD_SDK_REGION` → `HUAWEICLOUD_REGION` → `OS_REGION_NAME` (region,
+default `cn-southwest-2`), `AGENTARTS_MEMORY_DATA_ENDPOINT` (base URL override,
+default `https://memory.<region>.huaweicloud-agentarts.com`),
+`AGENTARTS_MEMORY_USER_ID` (`actor_id`, default `dsh-user`) and
+`AGENTARTS_MEMORY_RERANK` (search reranking, default on). These are the same
+names the AgentArts memory toolkit uses, so one export configures every
+integration.
+
+`actor_id` is the recall filter that matters most: it **must equal the actor id
+used when the memories were written**, otherwise search returns HTTP 200 with
+zero records and no error. The default `dsh-user` is consistent for
+recall + capture within this plugin, but a deployment that writes memory through
+another integration has to export `AGENTARTS_MEMORY_USER_ID` to match it.
 
 ## Switch semantics
 
@@ -30,18 +45,30 @@ installed but completely out of the way.
 
 - `huawei_memory_search(query, top_k?, strategy_type?)` — semantic search, returns
   scored memory texts.
-- `huawei_memory_save(content, strategy_type?)` — writes one memory record
-  directly, bypassing server-side extraction. Defaults to `user_preference`.
+- `huawei_memory_save(content)` — stores a fact as short-term memory for the
+  session; the platform extracts long-term memories from it automatically.
 
 Both tools also require a configured space and API key; without them the plugin
 stays mounted but registers no tools, and the plugin log states why.
 
-**`recall.enabled`** — on every `agent/pre-step` the incoming user text is used as
-a search query (skipped below `minQueryChars`), the top hits above `minScore` are
-rendered into one context block under `maxInjectTokens`, and that block is
-prepended as an extra user message. Already-injected memory texts are remembered
-per agent so a multi-step turn does not repeat itself. Searches are cached for
-`cacheMs`.
+**`recall.mode`** — three values:
+
+- `tool` (default): no `agent/pre-step` listener is registered. The tool guidance
+  gains one extra sentence telling the model the memory exists and when to query
+  it; the model decides whether to pay for the round trip. Tools stay available.
+- `auto`: on every `agent/pre-step` the incoming user text is used as a
+  search query (skipped below `minQueryChars`), the top hits above `minScore` are
+  rendered into one context block under `maxInjectTokens`, and that block is
+  prepended as an extra user message. Already-injected memory texts are
+  remembered per agent so a multi-step turn does not repeat itself. Searches are
+  cached for `cacheMs`.
+- `off`: neither injection nor hint; tools stay available if `tools.enabled` is
+  true. The legacy boolean still works: `recall.enabled: true` maps to `auto` and
+  `false` to `off`; with neither key set the mode is `tool`.
+
+Recall uses `recall.timeoutMs` (default 1000ms) for the search request, because
+it blocks the step that is about to call the model; `timeoutMs` (default 5000ms)
+still governs writes and capture. Either failure path degrades silently.
 
 **`capture.enabled`** (default `false`) — on `session/disposed` the dialogue turns
 of the session are pushed with `is_force_extract: true`, using the DSH session id

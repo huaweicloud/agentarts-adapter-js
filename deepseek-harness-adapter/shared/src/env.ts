@@ -12,8 +12,6 @@ export const ADAPTER_ENV = {
   dshPatches: 'AGENTRUN_DSH_PATCHES',
   dshCwd: 'AGENTRUN_DSH_CWD',
   dshTimeoutMs: 'AGENTRUN_DSH_TIMEOUT_MS',
-  memoryRecallInput: 'AGENTRUN_MEMORY_RECALL',
-  knowledgeRecallInput: 'AGENTRUN_KNOWLEDGE_RECALL',
   sessionId: 'AGENTRUN_DSH_SESSION_ID',
   eventId: 'AGENTRUN_DSH_EVENT_ID',
   attempt: 'AGENTRUN_DSH_ATTEMPT',

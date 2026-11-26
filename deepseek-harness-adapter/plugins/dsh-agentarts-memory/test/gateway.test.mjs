@@ -61,9 +61,11 @@ async function startStub(options = {}) {
   }
 }
 
+// Empty config env keeps a developer's exported AGENTARTS_MEMORY_* out of the
+// assertions; the gateway env below carries only the API key.
 const gatewayFor = (url, overrides = {}, env = { STUB_KEY: 'stub-key' }) =>
   new MemoryGateway(
-    resolveConfig({ spaceId: 'space-1', apiKeyEnv: 'STUB_KEY', endpoint: url, ...overrides }),
+    resolveConfig({ spaceId: 'space-1', apiKeyEnv: 'STUB_KEY', endpoint: url, ...overrides }, {}),
     env,
   )
 
@@ -136,6 +138,21 @@ test('normalizeSearchResponse accepts records and results envelopes', () => {
   assert.equal(normalizeSearchResponse({ results: [{ record: { id: 'x' }, score: 0.9 }] }).length, 0)
 })
 
+test('AGENTARTS_MEMORY_RERANK=0 turns reranking off in the search body', async () => {
+  const stub = await startStub()
+  try {
+    const config = resolveConfig(
+      { spaceId: 'space-1', apiKeyEnv: 'STUB_KEY', endpoint: stub.url },
+      { AGENTARTS_MEMORY_RERANK: '0' },
+    )
+    const gateway = new MemoryGateway(config, { STUB_KEY: 'stub-key' })
+    await gateway.search('q')
+    assert.equal(stub.requests[0].body.rerank, false)
+  } finally {
+    await stub.close()
+  }
+})
+
 test('search sends the Bearer header and the expected body', async () => {
   const stub = await startStub()
   try {
@@ -152,36 +169,6 @@ test('search sends the Bearer header and the expected body', async () => {
     assert.equal(request.body.actor_id, 'dsh-user')
     assert.equal(request.body.top_k, 5)
     assert.equal(request.body.min_score, 0.35)
-  } finally {
-    await stub.close()
-  }
-})
-
-test('save posts a memory record and returns its id', async () => {
-  const stub = await startStub({ body: { id: 'new-1', content: 'saved text' } })
-  try {
-    const saved = await gatewayFor(stub.url).save({ content: 'saved text', strategyType: 'semantic' })
-    assert.deepEqual(saved, { id: 'new-1', content: 'saved text' })
-
-    const [request] = stub.requests
-    assert.equal(request.url, '/v1/core/spaces/space-1/memories')
-    assert.equal(request.body.content, 'saved text')
-    assert.equal(request.body.strategy_type, 'semantic')
-    assert.equal(request.body.actor_id, 'dsh-user')
-    // strategy_id is only sent when configured.
-    assert.ok(!('strategy_id' in request.body))
-  } finally {
-    await stub.close()
-  }
-})
-
-test('remove issues a DELETE on the record path', async () => {
-  const stub = await startStub({ status: 204 })
-  try {
-    await gatewayFor(stub.url).remove('mem-9')
-    const [request] = stub.requests
-    assert.equal(request.method, 'DELETE')
-    assert.equal(request.url, '/v1/core/spaces/space-1/memories/mem-9')
   } finally {
     await stub.close()
   }
@@ -204,8 +191,8 @@ test('pushMessages creates the session then posts parts-shaped messages', async 
     assert.equal(push.url, '/v1/core/spaces/space-1/sessions/session-1/messages')
     assert.equal(push.body.is_force_extract, true)
     assert.equal(push.body.idempotency_key, 'session-1')
-    assert.deepEqual(push.body.messages[0], { role: 'user', parts: [{ type: 'text', text: 'hi' }], actor_id: 'dsh-user' })
-    assert.deepEqual(push.body.messages[1], { role: 'assistant', parts: [{ type: 'text', text: 'hello' }], assistant_id: 'dsh' })
+    assert.deepEqual(push.body.messages[0], { role: 'user', parts: [{ type: 'text', text: 'hi' }] })
+    assert.deepEqual(push.body.messages[1], { role: 'assistant', parts: [{ type: 'text', text: 'hello' }] })
   } finally {
     await stub.close()
   }
@@ -243,14 +230,17 @@ test('an HTTP error surfaces the backend error_code', async () => {
   }
 })
 
-test('a slow backend hits the deadline', async () => {
+test('a slow search hits the short recall deadline, not the write deadline', async () => {
   const stub = await startStub({ delayMs: 300 })
   try {
-    await assert.rejects(gatewayFor(stub.url, { timeoutMs: 100 }).search('q'), (error) => {
+    await assert.rejects(gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).search('q'), (error) => {
       assert.equal(error.code, 'timeout')
       assert.match(error.message, /exceeded 100ms/)
       return true
     })
+    // Same config, but a write uses timeoutMs (5000 by default) and completes.
+    const accepted = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).pushMessages('s', [{ role: 'user', content: 'x' }])
+    assert.equal(accepted, 1)
   } finally {
     await stub.close()
   }
@@ -289,10 +279,10 @@ test('an empty API key is reported before any request', async () => {
 })
 
 test('an empty space id is reported separately from a missing key', async () => {
-  const gateway = new MemoryGateway(resolveConfig({ endpoint: 'http://127.0.0.1:1' }), { STUB_KEY: 'k' })
+  const gateway = new MemoryGateway(resolveConfig({ endpoint: 'http://127.0.0.1:1' }, {}), { STUB_KEY: 'k' })
   await assert.rejects(gateway.search('q'), (error) => {
     assert.equal(error.code, 'unconfigured')
-    assert.match(error.message, /spaceId/)
+    assert.match(error.message, /AGENTARTS_MEMORY_SPACE_ID/)
     return true
   })
 })

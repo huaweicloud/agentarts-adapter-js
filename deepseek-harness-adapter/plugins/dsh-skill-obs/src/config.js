@@ -9,7 +9,7 @@
  * @module dsh-skill-obs/config
  */
 
-export const SKILLS_DIR_ENV = 'AGENTRUN_SKILLS_DIR'
+export const AGENTRUN_DIR_ENV = 'AGENTRUN_DIR'
 export const SKILLS_ENV = 'AGENTRUN_SKILLS'
 export const USER_BUCKET_ENV = 'AGENTRUN_USER_BUCKET'
 export const OBS_ENDPOINT_ENV = 'AGENTRUN_SKILLS_OBS_ENDPOINT'
@@ -17,6 +17,13 @@ export const DEFAULT_MOUNT_DIR = '/home/agentarts/skills'
 
 function asString(value, fallback = '') {
   return typeof value === 'string' ? value.trim() : fallback
+}
+
+/** Skills live under `<AGENTRUN_DIR>/skills` (e.g. AGENTRUN_DIR=D:\ → D:/skills, equivalent on Windows). */
+export function skillsDirFrom(baseDir) {
+  const dir = asString(baseDir)
+  if (dir === '') return ''
+  return dir.replace(/[\\/]+$/, '') + '/skills'
 }
 
 /**
@@ -76,7 +83,7 @@ export function resolveConfig(raw, env = process.env) {
   const metadata = fromAgentMetadata(env)
   return {
     enabled: typeof r.enabled === 'boolean' ? r.enabled : true,
-    mountDir: asString(r.mountDir) || asString(env[SKILLS_DIR_ENV]) || DEFAULT_MOUNT_DIR,
+    mountDir: asString(r.mountDir) || skillsDirFrom(env[AGENTRUN_DIR_ENV]) || DEFAULT_MOUNT_DIR,
     skills: asString(r.skills) || asString(metadata.skills) || asString(env[SKILLS_ENV]),
     userBucket: asString(r.userBucket) || asString(metadata.userBucket) || asString(env[USER_BUCKET_ENV]),
     region:

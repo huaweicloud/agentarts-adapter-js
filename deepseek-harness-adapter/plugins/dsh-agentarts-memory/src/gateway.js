@@ -6,9 +6,10 @@
  * the SDK cannot be a dependency here: its `package.json` declares
  * `"@huaweicloud/huaweicloud-sdk-agentidentity": "workspace:*"` and pnpm
  * refuses to install a `file:` dependency carrying a workspace protocol, so a
- * git-installed copy of this plugin would have nothing to resolve. With the
- * client inlined the plugin installs from the repository and runs with no
- * build step and no extra setup beyond a space id and an API key.
+ * plugin installed from this directory would have nothing to resolve. With the
+ * client inlined the plugin runs with no build step and no extra setup beyond
+ * `AGENTARTS_MEMORY_SPACE_ID` and `HUAWEICLOUD_SDK_MEMORY_API_KEY` in the
+ * environment.
  *
  * The wire format is transcribed from the SDK sources, not guessed:
  *
@@ -70,7 +71,7 @@ export function resolveBaseUrl(config, env = process.env) {
  * Build the search request body. Field names and the always-present
  * `only_actived` / `rerank` pair mirror the SDK's `MemorySearchFilter`.
  *
- * @param {{query: string, topK?: number, minScore?: number, strategyType?: string, actorId?: string, assistantId?: string}} options
+ * @param {{query: string, topK?: number, minScore?: number, strategyType?: string, actorId?: string, assistantId?: string, rerank?: boolean}} options
  * @returns {Record<string, unknown>}
  */
 export function buildSearchBody(options) {
@@ -82,7 +83,8 @@ export function buildSearchBody(options) {
   if (options.topK !== undefined) body.top_k = options.topK
   if (options.minScore !== undefined) body.min_score = options.minScore
   body.only_actived = false
-  body.rerank = true
+  // Operator-controlled via AGENTARTS_MEMORY_RERANK; the backend default is on.
+  body.rerank = options.rerank === undefined ? true : options.rerank
   return body
 }
 
@@ -170,7 +172,7 @@ export class MemoryGateway {
    *
    * @param {string} method - HTTP method
    * @param {string} path - path beginning with `/`
-   * @param {{body?: unknown, signal?: AbortSignal, label: string}} options
+   * @param {{body?: unknown, signal?: AbortSignal, label: string, timeoutMs?: number}} options
    * @returns {Promise<any>} parsed JSON body, `{}` for 204, or `{response}` for non-JSON
    */
   async request(method, path, options) {
@@ -179,7 +181,8 @@ export class MemoryGateway {
     }
 
     const url = `${this.baseUrl}${path}`
-    const timeout = AbortSignal.timeout(this.#config.timeoutMs)
+    const timeoutMs = options.timeoutMs ?? this.#config.timeoutMs
+    const timeout = AbortSignal.timeout(timeoutMs)
     const signal =
       options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout])
 
@@ -196,7 +199,7 @@ export class MemoryGateway {
       })
     } catch (error) {
       if (error?.name === 'TimeoutError') {
-        throw new GatewayError('timeout', `${options.label} exceeded ${this.#config.timeoutMs}ms`)
+        throw new GatewayError('timeout', `${options.label} exceeded ${timeoutMs}ms`)
       }
       if (error?.name === 'AbortError') {
         throw new GatewayError('aborted', `${options.label} aborted`)
@@ -233,7 +236,7 @@ export class MemoryGateway {
   /** The space path prefix every call uses. */
   #spacePath() {
     const spaceId = String(this.#config.spaceId ?? '').trim()
-    if (spaceId === '') throw new GatewayError('unconfigured', 'spaceId is not set')
+    if (spaceId === '') throw new GatewayError('unconfigured', 'space id is not set (AGENTARTS_MEMORY_SPACE_ID)')
     return `/v1/core/spaces/${encodeURIComponent(spaceId)}`
   }
 
@@ -241,7 +244,7 @@ export class MemoryGateway {
    * Semantic search over the space.
    *
    * @param {string} query - natural language query
-   * @param {{topK?: number, minScore?: number, strategyType?: string, signal?: AbortSignal}} [options]
+   * @param {{topK?: number, minScore?: number, strategyType?: string, signal?: AbortSignal, timeoutMs?: number}} [options]
    * @returns {Promise<MemoryHit[]>}
    */
   async search(query, options = {}) {
@@ -252,52 +255,16 @@ export class MemoryGateway {
       strategyType: options.strategyType,
       actorId: this.#config.actorId,
       assistantId: this.#config.assistantId,
+      rerank: this.#config.rerank,
     })
     const payload = await this.request('POST', `${this.#spacePath()}/memories/search`, {
       body,
       signal: options.signal,
       label: 'memory search',
+      // Recall must not hold a turn hostage; writes keep the longer default.
+      timeoutMs: options.timeoutMs ?? this.#config.recall.timeoutMs,
     })
     return normalizeSearchResponse(payload)
-  }
-
-  /**
-   * Write one memory record directly (no server-side extraction involved).
-   *
-   * @param {{content: string, strategyType?: string, metadata?: Record<string, unknown>}} input
-   * @returns {Promise<{id: string, content: string}>}
-   */
-  async save(input) {
-    const content = String(input?.content ?? '').trim()
-    if (content === '') throw new GatewayError('http', 'content must not be empty')
-
-    /** @type {Record<string, unknown>} */
-    const body = {
-      content,
-      strategy_type: input?.strategyType ?? this.#config.strategyType,
-    }
-    if (this.#config.strategyId !== '') body.strategy_id = this.#config.strategyId
-    if (this.#config.actorId !== '') body.actor_id = this.#config.actorId
-    if (this.#config.assistantId !== '') body.assistant_id = this.#config.assistantId
-    if (input?.metadata !== undefined) body.metadata = input.metadata
-
-    const created = await this.request('POST', `${this.#spacePath()}/memories`, {
-      body,
-      label: 'memory save',
-    })
-    return { id: String(created?.id ?? ''), content: String(created?.content ?? content) }
-  }
-
-  /**
-   * Delete one memory record.
-   *
-   * @param {string} id - cloud memory record id
-   * @returns {Promise<void>}
-   */
-  async remove(id) {
-    await this.request('DELETE', `${this.#spacePath()}/memories/${encodeURIComponent(String(id))}`, {
-      label: 'memory delete',
-    })
   }
 
   /**
@@ -305,12 +272,17 @@ export class MemoryGateway {
    *
    * @param {string} sessionId - DSH session id, reused as the cloud session id
    * @param {Array<{role: string, content: string}>} messages - plain text turns
+   * @param {string} [idempotencyKey] - per-push dedupe key. Must change on every capture so
+   *   the cloud accepts repeated appends to the same session; reusing the session id would
+   *   make each subsequent append look like a retry of the first and be rejected.
    * @returns {Promise<number>} number of messages accepted
    */
-  async pushMessages(sessionId, messages) {
+  async pushMessages(sessionId, messages, idempotencyKey) {
     const id = String(sessionId ?? '').trim()
     if (id === '') throw new GatewayError('http', 'session id must not be empty')
     if (!Array.isArray(messages) || messages.length === 0) return 0
+    const key =
+      typeof idempotencyKey === 'string' && idempotencyKey.trim() !== '' ? idempotencyKey.trim() : id
 
     const space = this.#spacePath()
 
@@ -331,17 +303,12 @@ export class MemoryGateway {
     const batch = await this.request('POST', `${space}/sessions/${encodeURIComponent(id)}/messages`, {
       body: {
         // `parts`, not `content`: the SDK's TextMessage.toDict shape.
-        messages: messages.map((message) => {
-          const role = message.role === 'assistant' ? 'assistant' : 'user'
-          return {
-            role,
-            parts: [{ type: 'text', text: message.content }],
-            ...(role === 'user' && this.#config.actorId !== '' ? { actor_id: this.#config.actorId } : {}),
-            ...(role === 'assistant' && this.#config.assistantId !== '' ? { assistant_id: this.#config.assistantId } : {}),
-          }
-        }),
+        messages: messages.map((message) => ({
+          role: message.role === 'assistant' ? 'assistant' : 'user',
+          parts: [{ type: 'text', text: message.content }],
+        })),
         is_force_extract: true,
-        idempotency_key: id,
+        idempotency_key: key,
       },
       label: 'memory message push',
     })

@@ -91,14 +91,13 @@ describe('child env injection', () => {
       AGENTRUN_CONFIG_FILE: '/secret/config',
       AGENTRUN_MEMORY_RECALL: '["do-not-copy-input"]',
       MEMORY_API_KEY: 'do-not-copy',
-      AGENTRUN_MEMORY_CAPTURE: '0',
       AGENTRUN_DATALAKE_ENDPOINT: 'https://datalake.example',
       AGENTRUN_DATALAKE_API_KEY: 'datalake-secret',
       MCP_OTHER_URL: 'https://other.example',
       HUAWEICLOUD_SDK_AK: 'obs-ak',
       HUAWEICLOUD_SDK_SK: 'obs-sk',
       HUAWEICLOUD_SDK_SECURITY_TOKEN: 'obs-sts',
-      AGENTRUN_SKILLS_DIR: '/home/agentarts/skills',
+      AGENTRUN_DIR: '/home/agentarts',
     });
     expect(env['PATH']).toBe('/bin');
     // Upper-case alias stays out; the document-defined lower-case object is injected for dsh-skill-obs.
@@ -110,14 +109,12 @@ describe('child env injection', () => {
     expect(env['HUAWEICLOUD_SDK_AK']).toBe('obs-ak');
     expect(env['HUAWEICLOUD_SDK_SK']).toBe('obs-sk');
     expect(env['HUAWEICLOUD_SDK_SECURITY_TOKEN']).toBe('obs-sts');
-    expect(env['AGENTRUN_SKILLS_DIR']).toBe('/home/agentarts/skills');
+    expect(env['AGENTRUN_DIR']).toBe('/home/agentarts');
     expect(env['DEEPSEEK_API_KEY']).toBe('model-secret');
     expect(env['MODEL_API_KEY']).toBe('model-secret');
     expect(env['HUAWEICLOUD_SDK_MEMORY_API_KEY']).toBe('memory-secret');
-    expect(env['AGENTRUN_MEMORY_SPACE_ID']).toBe('memory-id');
+    expect(env['AGENTARTS_MEMORY_SPACE_ID']).toBe('memory-id');
     expect(env['AGENTARTS_MEMORY_DATA_ENDPOINT']).toBe('memory.internal');
-    expect(env['AGENTRUN_MEMORY_STRATEGY_ID']).toBe('strategy-test');
-    expect(env['AGENTRUN_MEMORY_CAPTURE']).toBe('0');
     expect(env['HUAWEICLOUD_SDK_REGION']).toBe('cn-southwest-2');
     expect(env['DEEPSEEK_BASE_URL']).toBe('https://model.example/v1');
     expect(env['AGENTRUN_DSH_SESSION_ID']).toBeUndefined();
@@ -138,16 +135,12 @@ describe('child env injection', () => {
     });
     const env = buildChildEnv(config, {
       HUAWEICLOUD_SDK_MEMORY_API_KEY: 'must-not-leak',
-      AGENTRUN_MEMORY_SPACE_ID: 'must-not-leak',
+      AGENTARTS_MEMORY_SPACE_ID: 'must-not-leak',
       AGENTARTS_MEMORY_DATA_ENDPOINT: 'must-not-leak',
-      AGENTRUN_MEMORY_STRATEGY_ID: 'must-not-leak',
-      AGENTRUN_MEMORY_CAPTURE: '1',
     });
     expect(env['HUAWEICLOUD_SDK_MEMORY_API_KEY']).toBeUndefined();
-    expect(env['AGENTRUN_MEMORY_SPACE_ID']).toBeUndefined();
+    expect(env['AGENTARTS_MEMORY_SPACE_ID']).toBeUndefined();
     expect(env['AGENTARTS_MEMORY_DATA_ENDPOINT']).toBeUndefined();
-    expect(env['AGENTRUN_MEMORY_STRATEGY_ID']).toBeUndefined();
-    expect(env['AGENTRUN_MEMORY_CAPTURE']).toBeUndefined();
   });
 });
 
@@ -185,7 +178,7 @@ describe('profile rendering', () => {
     );
     expect(memoryPatch).toContain('id: dsh-agentarts-memory');
     expect(memoryPatch).toContain("name: '@agentarts/dsh-agentarts-memory'");
-    expect(memoryPatch).toContain("enabled: !!js process.env.AGENTRUN_MEMORY_CAPTURE !== '0'");
+    expect(memoryPatch).toContain('mode: tool');
     expect(memoryPatch).not.toContain('memory-secret');
     expect(readFileSync(join(rendered.profileDir, 'cordis.yml'), 'utf8')).toContain('[]');
     expect(rendered.renderedPatch).not.toContain('model-secret');

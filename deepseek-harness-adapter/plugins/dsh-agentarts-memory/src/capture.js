@@ -35,31 +35,6 @@ export function flattenBlocks(blocks) {
 }
 
 /**
- * Keep only user dialogue suitable for memory extraction. AgentRun's headless
- * runner submits an invocation envelope as the first user message; the cloud
- * should receive its prompt, not the transport metadata or runtime reminders.
- *
- * @param {string} text - flattened user message text
- * @returns {string} prompt text, or an empty string when the message is injected runtime context
- */
-export function normalizeUserText(text) {
-  const trimmed = text.trim()
-  if (trimmed === '' || trimmed.startsWith('<system-reminder>')) return ''
-  if (trimmed.startsWith('{')) {
-    try {
-      const value = JSON.parse(trimmed)
-      if (value !== null && typeof value === 'object' && !Array.isArray(value)
-        && typeof value.prompt === 'string' && typeof value.recall === 'object') {
-        return value.prompt.trim()
-      }
-    } catch {
-      // Ordinary user text that only resembles JSON remains untouched.
-    }
-  }
-  return trimmed
-}
-
-/**
  * Render the conversational turns of session events, keeping only the newest
  * `maxMessages` of them.
  *
@@ -74,7 +49,7 @@ export function renderTurns(events, maxMessages) {
   for (const event of events) {
     if (event === null || typeof event !== 'object') continue
     if (event.type === 'user/message') {
-      const content = normalizeUserText(flattenBlocks(event.data?.content))
+      const content = flattenBlocks(event.data?.content)
       if (content !== '') turns.push({ role: 'user', content: content.slice(0, TURN_CHAR_LIMIT) })
       continue
     }
@@ -104,14 +79,15 @@ export function applyCapture(ctx, gateway, config, readiness, log) {
     void (async () => {
       try {
         const start = Number.isInteger(session?.firstLiveSeq) ? session.firstLiveSeq : 0
-        const allEvents = typeof session?.snapshotEvents === 'function'
-          ? session.snapshotEvents()
-          : Array.isArray(session?.events) ? session.events : []
-        const events = allEvents.slice(start)
+        const events = Array.isArray(session?.events) ? session.events.slice(start) : []
         const turns = renderTurns(events, config.capture.maxMessages)
         if (turns.length === 0) return
 
-        const pushed = await gateway.pushMessages(String(session.id), turns)
+        // A stable idempotency key cannot reuse the session id: the cloud would treat
+        // every append after the first as a duplicate retry. Bind it to the session's
+        // current seq (monotonic per append) so each capture is a distinct, accepted push.
+        const key = `${session.id}:${session.seq}`
+        const pushed = await gateway.pushMessages(String(session.id), turns, key)
         log.info(`captured ${pushed} message(s) from session ${String(session.id)}`)
       } catch (error) {
         log.warn(`capture failed for session ${String(session?.id)}: ${error instanceof Error ? error.message : String(error)}`)

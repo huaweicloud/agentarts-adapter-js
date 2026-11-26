@@ -5,7 +5,7 @@
       name: '@agentarts/dsh-skill-obs'
       config:
         enabled: !!js Boolean(process.env.agent_metadata || process.env.AGENTRUN_SKILLS)
-        mountDir: !!js process.env.AGENTRUN_SKILLS_DIR || '/home/agentarts/skills'
+        mountDir: !!js (process.env.AGENTRUN_DIR || '/home/agentarts') + '/skills'
         region: !!js process.env.HUAWEICLOUD_SDK_REGION || 'cn-southwest-2'
         # Default: reuse a valid extracted skill (cache). Set AGENTRUN_SKILLS_FORCE_REFRESH=1 to force re-download.
         forceRefresh: !!js process.env.AGENTRUN_SKILLS_FORCE_REFRESH === '1'
@@ -16,5 +16,5 @@
   config:
     includeDefaultRoots: true
     customSkillDirs:
-      - !!js process.env.AGENTRUN_SKILLS_DIR || '/home/agentarts/skills'
+      - !!js (process.env.AGENTRUN_DIR || '/home/agentarts') + '/skills'
     watch: false

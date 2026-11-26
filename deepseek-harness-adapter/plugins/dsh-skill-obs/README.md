@@ -27,7 +27,7 @@
 | `agent_metadata.skills` | `"skillId:skillName:skillVer, skillId:skillName:skillVer"` |
 | `agent_metadata.user_bucket` | OBS 桶名 |
 | `AGENTRUN_SKILLS` / `AGENTRUN_USER_BUCKET` | 独立 env 覆盖（无 agent_metadata 时） |
-| `AGENTRUN_SKILLS_DIR` | 挂载目录，默认 `/home/agentarts/skills` |
+| `AGENTRUN_DIR` | 基目录，技能下载到 `<AGENTRUN_DIR>/skills`（默认 `/home/agentarts/skills`） |
 | `HUAWEICLOUD_SDK_REGION` | region，默认 `cn-southwest-2` |
 | `HUAWEICLOUD_SDK_AK` / `HUAWEICLOUD_SDK_SK` | OBS 签名凭证（`createCredential()` 的 env provider 读取；生产可改走实例元数据） |
 | `HUAWEICLOUD_SDK_SECURITY_TOKEN` | STS 临时 token（可选） |

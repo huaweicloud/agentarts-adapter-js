@@ -389,7 +389,7 @@ export function buildChildEnv(
   }
   if (config.model.baseUrl !== undefined) env[MODEL_ENV.baseUrl] = config.model.baseUrl;
   if (config.memory !== undefined) {
-    env['AGENTRUN_MEMORY_SPACE_ID'] = config.memory.spaceId;
+    env['AGENTARTS_MEMORY_SPACE_ID'] = config.memory.spaceId;
     if (config.memory.endpoint !== undefined) {
       env['AGENTARTS_MEMORY_DATA_ENDPOINT'] = config.memory.endpoint;
     }
@@ -398,17 +398,11 @@ export function buildChildEnv(
       config.memory.apiKey ??
       parentEnv['HUAWEICLOUD_SDK_MEMORY_API_KEY'];
     if (memoryApiKey !== undefined) env['HUAWEICLOUD_SDK_MEMORY_API_KEY'] = memoryApiKey;
-    const strategyId = config.memory.strategyId ?? parentEnv['AGENTRUN_MEMORY_STRATEGY_ID'];
-    if (strategyId !== undefined && strategyId !== '') {
-      env['AGENTRUN_MEMORY_STRATEGY_ID'] = strategyId;
-    }
     env['HUAWEICLOUD_SDK_REGION'] =
       parentEnv['HUAWEICLOUD_SDK_REGION'] ??
       parentEnv['HUAWEICLOUD_REGION'] ??
       parentEnv['OS_REGION_NAME'] ??
       'cn-southwest-2';
-    const capture = parentEnv['AGENTRUN_MEMORY_CAPTURE'];
-    if (capture === '0' || capture === '1') env['AGENTRUN_MEMORY_CAPTURE'] = capture;
   }
   // dsh-skill-obs reads agent_metadata (skills/user_bucket) and the OBS signing credentials.
   env['agent_metadata'] = JSON.stringify(config.metadata);
@@ -419,7 +413,7 @@ export function buildChildEnv(
     'HUAWEICLOUD_SDK_REGION',
     'HUAWEICLOUD_REGION',
     'OS_REGION_NAME',
-    'AGENTRUN_SKILLS_DIR',
+    'AGENTRUN_DIR',
     'AGENTRUN_SKILLS',
     'AGENTRUN_USER_BUCKET',
     'AGENTRUN_SKILLS_OBS_ENDPOINT',

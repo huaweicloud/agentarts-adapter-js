@@ -14,7 +14,7 @@
 
 - `agent_metadata.skills`：`skillId:skillName:skillVer` 逗号分隔列表；
 - `agent_metadata.user_bucket`：OBS 桶名；
-- `AGENTRUN_SKILLS_DIR`：挂载目录（默认 `/home/agentarts/skills`）；
+- `AGENTRUN_DIR`：基目录，技能下载到 `<AGENTRUN_DIR>/skills`（默认 `/home/agentarts/skills`）；
 - `HUAWEICLOUD_SDK_AK` / `HUAWEICLOUD_SDK_SK` / `HUAWEICLOUD_SDK_SECURITY_TOKEN`：OBS 签名凭证。
 
 ## 输出
