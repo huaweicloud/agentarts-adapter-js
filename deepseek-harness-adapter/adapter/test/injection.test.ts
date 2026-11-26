@@ -1,13 +1,16 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 
 import { buildChildEnv, loadAdapterConfig, redactEnv } from '../src/config.js';
 import { materializeProfile } from '../src/patch.js';
 import type { InvocationRequest } from '../src/types.js';
+
+vi.mock('node:child_process', () => ({ spawnSync: vi.fn(() => ({ status: 0 })) }));
 
 const cleanup: string[] = [];
 afterEach(() => {
@@ -145,9 +148,13 @@ describe('child env injection', () => {
 });
 
 describe('profile rendering', () => {
-  it('materializes base+headless+memory+skill-obs, keeps official runner/local stores and never writes secrets', () => {
+  it('materializes the ACP profile and both plugins without writing secrets', () => {
     const { config } = fixture();
     const rendered = materializeProfile(config);
+    expect(spawnSync).toHaveBeenCalledWith('pnpm', expect.arrayContaining(['install', '--prod']),
+      expect.objectContaining({ cwd: rendered.profileDir }));
+    materializeProfile(config);
+    expect(spawnSync).toHaveBeenCalledTimes(1);
     const manifest = JSON.parse(readFileSync(join(rendered.profileDir, 'package.json'), 'utf8'));
     expect(manifest.dsh.profile.bundles).toEqual([
       '@deepseek-ai/dsh-base',

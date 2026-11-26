@@ -6,8 +6,8 @@ export const SESSION_HEADER = 'x-hw-agentarts-session-id'
 /** Scheduler 的注入端口：launchSpec 与 recall 由装配侧注入，可替换为真实实现 */
 export interface SchedulerDeps {
     launchSpec(req: RoundRequest, recallResult: string): LaunchSpec | Promise<LaunchSpec>
-    /** 记忆/知识库召回；实现由装配侧注入（含超时降级），此处只消费结果 */
-    recall?(req: RoundRequest): Promise<string>
+    /** 记忆/知识库召回。调度器负责超时降级，provider 可用 signal 中止底层请求。 */
+    recall?(req: RoundRequest, signal: AbortSignal): Promise<string>
     timeoutMs?: number
 }
 
@@ -48,6 +48,7 @@ export interface ModelSettings {
 /** Memory service settings extracted from agent_metadata.memory_config. */
 export interface MemorySettings {
   readonly spaceId: string;
+  readonly actorId?: string;
   /** Endpoint preferred from private_access.domain_name, falling back to public_access.domain_name. */
   readonly endpoint?: string;
   readonly apiKey?: string;

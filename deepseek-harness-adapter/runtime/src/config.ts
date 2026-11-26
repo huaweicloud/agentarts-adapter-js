@@ -1,5 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { normalizeMcpServers } from './gateway.js'
+import { readMetadata, childEnvironment } from './metadata.js'
 import type {
     AgentRuntimeType,
     GatewayConfig,
@@ -25,8 +27,8 @@ function bool(value: string | undefined, fallback: boolean): boolean {
 }
 
 function int(value: string | undefined, fallback: number): number {
-    const parsed = Number.parseInt(value ?? '', 10)
-    return Number.isFinite(parsed) ? parsed : fallback
+    const parsed = Number(value)
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 /** Split an ACP_ARGS string, honoring single/double quotes. */
@@ -39,18 +41,40 @@ export function splitArgs(text: string): string[] {
     return result
 }
 
-function jsonObject(value: string | undefined): Record<string, string> {
+function jsonObject(value: string | undefined, variable?: string): Record<string, string> {
     if (value === undefined || value === '') return {}
+    let parsed: unknown
     try {
-        const parsed = JSON.parse(value) as Record<string, unknown>
-        const result: Record<string, string> = {}
-        for (const [key, item] of Object.entries(parsed)) {
-            if (typeof item === 'string') result[key] = item
-        }
-        return result
+        parsed = JSON.parse(value)
     } catch {
+        if (variable) throw new Error(`${variable} is not valid JSON`)
         return {}
     }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        if (variable) throw new Error(`${variable} must be a JSON object`)
+        return {}
+    }
+
+    const result: Record<string, string> = {}
+    for (const [key, item] of Object.entries(parsed)) {
+        if (typeof item === 'string') result[key] = item
+    }
+    return result
+}
+
+export function parseAcpChildEnv(value: string | undefined): Record<string, string> {
+    return jsonObject(value, 'DSH_ACP_CHILD_ENV')
+}
+
+function parseDeployedMcpServers(value: string | undefined) {
+    if (value === undefined) return []
+    let parsed: unknown
+    try { parsed = JSON.parse(value) } catch { throw new Error('Invalid AGENTRUN_ACP_MCP_SERVERS JSON') }
+    const servers = normalizeMcpServers(parsed)
+    if (!Array.isArray(parsed) || parsed.length !== servers.length) {
+        throw new Error('AGENTRUN_ACP_MCP_SERVERS must contain a valid array of MCP servers')
+    }
+    return servers
 }
 
 export function loadDotEnv(file = '.env'): void {
@@ -63,7 +87,15 @@ export function loadDotEnv(file = '.env'): void {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
-    loadDotEnv()
+    loadDotEnv(env.DSH_ENV_FILE)
+    const metadata = readMetadata(env)
+    const model = metadata.model_config
+    const acpEnv = childEnvironment(env)
+    if (!acpEnv.DEEPSEEK_API_KEY && model?.api_key) acpEnv.DEEPSEEK_API_KEY = model.api_key
+    if (!acpEnv.DEEPSEEK_BASE_URL && model?.base_url) acpEnv.DEEPSEEK_BASE_URL = model.base_url
+    Object.assign(acpEnv, parseAcpChildEnv(env.DSH_ACP_CHILD_ENV))
+    if (!acpEnv.DEEPSEEK_API_KEY && model?.credential_provider_name)
+        throw new Error('model_config.credential_provider_name requires a resolved model credential')
 
     const command =
         stringEnv(env, 'DSH_ACP_COMMAND') ??
@@ -111,7 +143,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
             stringEnv(env, 'DSH_AGENTARTS_GATEWAY_ENABLED') === undefined
                 ? undefined
                 : bool(stringEnv(env, 'DSH_AGENTARTS_GATEWAY_ENABLED'), false),
-        mcpUrl: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_MCP_URL'),
+        mcpUrl: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_MCP_URL') ?? metadata.mcp_gateway_config?.endpoint,
         gatewayId: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_ID'),
         targetId: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_TARGET_ID'),
         targetName: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_TARGET_NAME'),
@@ -135,7 +167,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         useAuthorizerKey: bool(stringEnv(env, 'DSH_AGENTARTS_GATEWAY_USE_AUTHORIZER_KEY'), true),
     }
 
-    const systemText = stringEnv(env, 'DSH_SYSTEM_PROMPT')
+    const systemText = stringEnv(env, 'DSH_SYSTEM_PROMPT') ?? metadata.system_prompt
     const systemModeRaw = stringEnv(env, 'DSH_SYSTEM_PROMPT_MODE')
     const systemPrompt: SystemPromptConfig | undefined =
         systemText === undefined
@@ -153,10 +185,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         acpCommand: command,
         acpArgs: supervisedArgs,
         workspaceCwd: path.resolve(workspace),
-        acpEnv: jsonObject(stringEnv(env, 'DSH_ACP_CHILD_ENV')),
+        acpEnv,
         requestTimeoutMs: int(stringEnv(env, 'DSH_ACP_REQUEST_TIMEOUT_MS'), 60_000),
         verbose: bool(stringEnv(env, 'DSH_ACP_VERBOSE'), false),
-        model: stringEnv(env, 'DSH_ACP_MODEL'),
+        model: stringEnv(env, 'DSH_ACP_MODEL') ?? model?.name,
+        modelProvider: stringEnv(env, 'DSH_ACP_MODEL_PROVIDER'),
+        deployedMcpServers: parseDeployedMcpServers(stringEnv(env, 'AGENTRUN_ACP_MCP_SERVERS')),
         reasoningEffort: stringEnv(env, 'DSH_ACP_REASONING_EFFORT'),
         systemPrompt,
         permission,

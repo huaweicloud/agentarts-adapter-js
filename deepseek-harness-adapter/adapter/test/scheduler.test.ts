@@ -30,6 +30,32 @@ describe('Scheduler', () => {
         expect(outcome.ok).toBe(true)
     })
 
+    it('recall 超过 300ms 时中止 provider 并以空结果启动', async () => {
+        const launchSpec = vi.fn(() => fakeSpec())
+        const recall = vi.fn((_request: RoundRequest, _signal: AbortSignal) => new Promise<string>(() => {}))
+        const scheduler = new Scheduler({ launchSpec, recall })
+        const handle = await scheduler.run(req('recall-timeout'))
+        expect((await handle.outcome).ok).toBe(true)
+        const providerSignal = recall.mock.calls[0][1]
+        expect(providerSignal.aborted).toBe(true)
+        expect(providerSignal.reason.name).toBe('TimeoutError')
+        expect(launchSpec).toHaveBeenCalledWith(req('recall-timeout'), '')
+    })
+
+    it('请求在召回中断开时中止 provider，跳过启动准备', async () => {
+        const launchSpec = vi.fn(() => fakeSpec())
+        const controller = new AbortController()
+        const recall = vi.fn(async (_request: RoundRequest, _signal: AbortSignal) => {
+            controller.abort()
+            return 'unused'
+        })
+        const scheduler = new Scheduler({ launchSpec, recall })
+        const handle = await scheduler.run(req('recall-cancel'), controller.signal)
+        expect(await handle.outcome).toMatchObject({ ok: false, error: 'round cancelled during recall' })
+        expect(recall.mock.calls[0][1].aborted).toBe(true)
+        expect(launchSpec).not.toHaveBeenCalled()
+    })
+
     it('同 sessionId 两轮串行：第二轮帧在第一轮结束后才开始', async () => {
         const scheduler = new Scheduler({ launchSpec: () => fakeSpec() })
         const h1 = await scheduler.run(req('s1', 'first'))

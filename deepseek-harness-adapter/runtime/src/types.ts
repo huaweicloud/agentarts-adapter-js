@@ -47,7 +47,7 @@ export interface SystemPromptConfig {
     mode?: 'append' | 'replace' | 'replace-all'
 }
 
-export type AgentRuntimeType = 'DSH' | 'PI' | 'CODEX'
+export type AgentRuntimeType = 'DSH' | 'DSH_HEADLESS' | 'PI' | 'CODEX'
 
 export interface RuntimeConfig {
     acpCommand: string
@@ -58,6 +58,8 @@ export interface RuntimeConfig {
     requestTimeoutMs: number
     verbose: boolean
     model?: string
+    modelProvider?: string
+    deployedMcpServers?: AcpMcpServer[]
     reasoningEffort?: string
     systemPrompt?: SystemPromptConfig
     permission: PermissionConfig
@@ -74,6 +76,9 @@ export interface RuntimeConfig {
 }
 
 export interface TurnRequest {
+    stream?: boolean
+    eventId?: string
+    attempt?: number
     sessionId: string
     prompt: string
     cwd?: string
@@ -93,6 +98,7 @@ export interface SessionEntry {
     mcpServers: AcpMcpServer[]
     createdAt: number
     lastUsedAt: number
+    quarantined?: boolean
     current?: PromptRunLike
 }
 
@@ -117,6 +123,8 @@ export type RuntimeEvent =
           type: 'text_delta'
           channel: TextChannel
           delta: string
+          attemptId?: string
+          revision?: number
           messageId: string
           token: boolean
       }
@@ -146,6 +154,7 @@ export type RuntimeEvent =
           source: string
       }
     | { type: 'error'; code: string; message: string; statusCode?: number; data?: unknown }
+    | { type: 'event_dropped'; eventType: string; reason: 'event_exceeds_buffer_limit' }
     | { type: 'run_finished'; stopReason: string; output: string; thought: string }
 
 export interface TurnResult {

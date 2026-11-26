@@ -46,6 +46,20 @@ describe('POST /invocations（真 SDK app + 假子进程）', () => {
         expect((await res.json()).error).toContain('model exploded')
     })
 
+    it('调度拒绝：500 回显请求头中的 sessionId', async () => {
+        const scheduler = new Scheduler({ launchSpec() { throw new Error('launch preparation failed') } })
+        const started = await listen(createApp(scheduler))
+        server = started.server
+        const res = await fetch(`http://${started.base}/invocations`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', [SESSION_HEADER]: 'failed-session' },
+            body: JSON.stringify({ prompt: 'hello' }),
+        })
+        expect(res.status).toBe(500)
+        expect(res.headers.get(SESSION_HEADER)).toBe('failed-session')
+        expect(await res.json()).toEqual({ error: 'launch preparation failed' })
+    })
+
     it('prompt 缺失：400', async () => {
         const base = await start()
         const res = await fetch(`${base}/invocations`, {

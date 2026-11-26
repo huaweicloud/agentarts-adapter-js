@@ -5,3 +5,5 @@ nohup.out
 dist/
 coverage/
 docs/design/
+.agentarts-events/
+.agentarts-protocol/

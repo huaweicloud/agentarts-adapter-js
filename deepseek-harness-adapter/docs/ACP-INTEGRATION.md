@@ -2,7 +2,7 @@
 
 本文档描述 **ACP 路线**下 Adapter 与 DSH 的集成方式：以 `dsh acp` 常驻子进程替代旧的 headless 一次性进程，并将 AgentArts 的记忆与 OBS 技能两个插件挂载进来。
 
-> 旧的 headless 路线（`dsh --profile agentrun` + 每轮一个子进程 + profile patch 渲染）已弃用，相关 CLI、`scheduler/resident.ts`、`patch.ts` 的动态渲染、demo 脚本均已移除。
+> 默认托管入口走 ACP。仍使用旧 profile 的调用方可显式选择 `AGENT_RUNTIME_TYPE=DSH_HEADLESS`。
 
 ## 1. 总体形态
 
@@ -10,7 +10,7 @@
 平台（/invocations、/ws）
    │
    ▼
-AgentArts Adapter 服务（主进程，runtime/dist/main.js）
+AgentArts Adapter 服务（主进程，adapter/dist/main.js）
    ├─ AgentArtsRuntimeApp（协议面）
    ├─ AcpRuntime（多 session 复用）
    └─ AcpClient ──spawn──► dsh acp 子进程（常驻，stdio JSON-RPC）
@@ -59,7 +59,7 @@ node --input-type=module -e "import {loadAdapterConfig} from './adapter/dist/con
 node adapter/dist/main.js
 ```
 
-启动流程：`bootstrapAcpFromAgentMetadata()`（`agent_metadata` → ACP env + identity 换模型/记忆 key）→ `loadConfig()` → `createDshApp()`。看到 `listening on 127.0.0.1:8080` 即就绪。
+启动时 `loadHostedDshConfig()` 解析部署配置并解析凭据，随后 `startHostedHarness()` 装配协议入口。以 `GET /ping` 返回 `Healthy` 为就绪信号。
 
 ### 2.4 发请求（用 Node，避免 PowerShell GBK 编码问题）
 
@@ -82,7 +82,7 @@ node -e "fetch('http://127.0.0.1:8080/invocations',{method:'POST',headers:{'cont
 | `mcp_config`（数组）| `AGENTRUN_ACP_MCP_SERVERS`（**全部** gateway 转 `mcpServers`，见 §5） |
 | 模型/记忆/MCP 的 `credential_provider_name` | 启动时经 `resolveCredentials`（identity 换 key）注入 `MODEL_API_KEY`、记忆 key、MCP headers |
 
-**其他环境变量**（`HUAWEICLOUD_SDK_AK/SK`、`OBS_ENDPOINT`、`AGENTRUN_DIR`、`DEEPSEEK_API_KEY` 等）：ACP 的 `AcpClient` 用 `env: { ...process.env, ...acpEnv }` **全量继承** Adapter 进程环境，只要部署时注入 Adapter 容器环境即可，无需逐个白名单透传。
+**其他环境变量**（`HUAWEICLOUD_SDK_AK/SK`、`OBS_ENDPOINT`、`AGENTRUN_DIR`、`DEEPSEEK_API_KEY` 等）：这些部署配置经白名单或 `DSH_ACP_CHILD_ENV` 注入 ACP 子进程。
 
 ## 4. 一次请求的完整时序
 
@@ -124,7 +124,7 @@ sequenceDiagram
 mcp_config[i] → { name: serverName, type: 'http', url: endpoint,
                   headers: [{name:'Authorization', value:'Bearer <key>'}] }
         ↓ 序列化为 AGENTRUN_ACP_MCP_SERVERS（JSON）
-openSession 时 readDeployedMcpServers() 合并进 session/new 的 mcpServers
+启动时解析为部署级 MCP 配置，openSession 将它合并进 session/new 的 mcpServers
 ```
 
 - 部署级（全部 gateway）与 per-request（`request.mcpServers`）会**合并**，几个 gateway 就挂几个。
@@ -154,7 +154,7 @@ openSession 时 readDeployedMcpServers() 合并进 session/new 的 mcpServers
 | 维度 | headless（已弃用） | ACP（当前） |
 |---|---|---|
 | 进程模型 | 每轮一个子进程 | **一个常驻子进程，多 session 复用** |
-| 配置注入 | profile patch 渲染 + `buildChildEnv` 白名单 | `agent_metadata` → `DSH_ACP_CHILD_ENV`（全量继承 + JSON 覆盖） |
+| 配置注入 | profile patch 渲染 + `buildChildEnv` 白名单 | `agent_metadata` → `DSH_ACP_CHILD_ENV`（部署白名单 + 显式 JSON 覆盖） |
 | MCP | `dsh-mcp-client` 行（profile patch） | `session/new` 的 `mcpServers`（per-session，多 gateway） |
 | 模型选择 | `agent-default-model` provider | `applyModelConfig` 按 group 嵌套匹配 configOptions |
 | 记忆召回 | 插件 `agent/pre-step` | 同（tool 模式模型主动 search，或 auto 自动注入） |

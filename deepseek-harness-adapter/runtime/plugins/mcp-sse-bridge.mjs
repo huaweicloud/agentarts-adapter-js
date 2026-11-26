@@ -92,6 +92,7 @@ async function postFrame(line) {
   try {
     const response = await fetch(postUrl, {
       method: 'POST',
+      redirect: Object.keys(headers).length ? 'error' : 'follow',
       headers: {
         ...headers,
         accept: 'application/json, text/event-stream',
@@ -131,7 +132,12 @@ function dispatch(event, data) {
   }
   if (event === 'endpoint') {
     try {
-      postUrl = new URL(data, sseUrl).href;
+      const target = new URL(data, sseUrl);
+      if (target.origin !== new URL(sseUrl).origin && Object.keys(headers).length > 0) {
+        fail('credentialed SSE endpoint changed origin');
+        return;
+      }
+      postUrl = target.href;
       endpointReady = true;
       log(`upstream endpoint ready: ${new URL(postUrl).origin}${new URL(postUrl).pathname}`);
       flushPending();
@@ -154,6 +160,7 @@ function dispatch(event, data) {
 async function readSse() {
   const response = await fetch(sseUrl, {
     headers: { ...headers, accept: 'text/event-stream' },
+    redirect: Object.keys(headers).length ? 'error' : 'follow',
     signal: abortController.signal,
   });
   if (!response.ok) {

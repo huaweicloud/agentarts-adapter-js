@@ -234,8 +234,10 @@ function normalizeMemory(metadata: UnknownRecord): MemorySettings | undefined {
     'agent_metadata.memory_config',
   );
   const strategyId = optionalString(memory, 'strategy_id', 'agent_metadata.memory_config');
+  const actorId = optionalString(memory, 'memory_user_id', 'agent_metadata.memory_config');
   return {
     spaceId,
+    ...(actorId ? { actorId } : {}),
     ...(endpoint ? { endpoint } : {}),
     ...(apiKey ? { apiKey } : {}),
     ...(credentialProviderName ? { credentialProviderName } : {}),
@@ -271,7 +273,7 @@ export function loadAdapterConfig(options: LoadConfigOptions = {}): AdapterConfi
   const argv = options.argv ?? {};
   let document: UnknownRecord = { agent_metadata: {} };
 
-  const configFile = argv.configFile ?? env[ADAPTER_ENV.configFile];
+  const configFile = argv.configFile ?? env[ADAPTER_ENV.configFile] ?? env.AGENT_METADATA_FILE;
   if (configFile) {
     const path = absoluteFrom(cwd, configFile);
     document = merge(document, parseDocument(readFileSync(path, 'utf8'), path));
@@ -390,6 +392,8 @@ export function buildChildEnv(
   if (config.model.baseUrl !== undefined) env[MODEL_ENV.baseUrl] = config.model.baseUrl;
   if (config.memory !== undefined) {
     env['AGENTARTS_MEMORY_SPACE_ID'] = config.memory.spaceId;
+    const actorId = parentEnv['AGENTARTS_MEMORY_USER_ID'] || config.memory.actorId;
+    if (actorId) env['AGENTARTS_MEMORY_USER_ID'] = actorId;
     if (config.memory.endpoint !== undefined) {
       env['AGENTARTS_MEMORY_DATA_ENDPOINT'] = config.memory.endpoint;
     }

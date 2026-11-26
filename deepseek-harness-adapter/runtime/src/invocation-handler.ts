@@ -11,7 +11,7 @@ function asString(value: unknown): string | null {
     return typeof value === 'string' && value !== '' ? value : null
 }
 
-function normalizePayload(payload: unknown, context?: RequestContext): TurnRequest & {
+export function normalizePayload(payload: unknown, context?: RequestContext): TurnRequest & {
     stream: boolean
 } {
     const body = (payload ?? {}) as Record<string, unknown>
@@ -23,12 +23,14 @@ function normalizePayload(payload: unknown, context?: RequestContext): TurnReque
         asString(body.sessionId) ?? asString(context?.sessionId) ?? randomUUID()
     // NaN 会被 setTimeout 当作 0 立即触发；非法值必须挡在入队前
     const timeoutMs = body.timeoutMs === undefined ? undefined : Number(body.timeoutMs)
-    if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
-        throw new Error('timeoutMs must be a positive number')
+    if (timeoutMs !== undefined && (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647)) {
+        throw new Error('timeoutMs must be a positive 32-bit integer')
     }
     return {
         sessionId,
         prompt,
+        eventId: asString(body.eventId) ?? undefined,
+        attempt: typeof body.attempt === 'number' ? body.attempt : undefined,
         stream: body.stream !== false,
         ...(asString(body.cwd) === null ? {} : { cwd: asString(body.cwd) as string }),
         ...(asString(body.acpSessionId) === null
@@ -59,11 +61,12 @@ function normalizePayload(payload: unknown, context?: RequestContext): TurnReque
     }
 }
 
-function errorResponse(error: unknown): JsonResponse {
+function errorResponse(error: unknown, sessionId?: string | null): JsonResponse {
     // 保留 RuntimeError 的状态码（404/409/502/503）；其余按请求错误处理
     const statusCode = error instanceof RuntimeError ? error.statusCode : 400
     return new JsonResponse({
         statusCode,
+        headers: sessionId ? { [SESSION_HEADER]: sessionId } : {},
         content: {
             error: {
                 code:
@@ -92,14 +95,14 @@ export function createInvocationHandler(runtime: AcpRuntime) {
         try {
             request = normalizePayload(payload, context)
         } catch (error) {
-            return errorResponse(error)
+            return errorResponse(error, asString(body.sessionId) ?? context?.sessionId)
         }
 
         let handle
         try {
-            handle = await runtime.runTurn(request)
+            handle = await runtime.runTurn(request, context?.signal)
         } catch (error) {
-            return errorResponse(toRuntimeError(error))
+            return errorResponse(toRuntimeError(error), request.sessionId)
         }
 
         if (!request.stream) {
@@ -121,14 +124,31 @@ export function createInvocationHandler(runtime: AcpRuntime) {
         }
 
         return (async function* () {
-            for await (const event of handle.events) {
-                yield project(event)
+            try {
+                for await (const event of handle.events) {
+                    if (event.type !== 'error' && event.type !== 'run_finished') yield project(event)
+                }
+                const result = await handle.result
+                if (result.ok) {
+                    yield project({
+                        type: 'run_finished',
+                        stopReason: result.stopReason,
+                        output: result.output,
+                        thought: result.thought,
+                    })
+                } else {
+                    const error = result.error ?? { code: 'runtime_error', message: 'failed' }
+                    yield project({ type: 'error', ...error })
+                }
+            } finally {
+                handle.cancel()
+                await handle.result
             }
         })()
     }
 }
 
-async function handleAction(
+export async function handleAction(
     runtime: AcpRuntime,
     action: string,
     body: Record<string, unknown>,
@@ -181,14 +201,15 @@ async function handleAction(
         }
         return new JsonResponse({
             statusCode: 400,
+            headers: { [SESSION_HEADER]: sessionId },
             content: { error: { code: 'invalid_action', message: `unknown action: ${action}` } },
         })
     } catch (error) {
-        return errorResponse(toRuntimeError(error))
+        return errorResponse(toRuntimeError(error), sessionId)
     }
 }
 
-function project(event: RuntimeEvent): Record<string, unknown> {
+export function project(event: RuntimeEvent): Record<string, unknown> & { type: string } {
     switch (event.type) {
         case 'session':
             return {
@@ -243,6 +264,6 @@ function project(event: RuntimeEvent): Record<string, unknown> {
                 thought: event.thought,
             }
         default:
-            return { ...(event as Record<string, unknown>) }
+            return { ...event }
     }
 }

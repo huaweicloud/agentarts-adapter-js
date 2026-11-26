@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createInvocationHandler } from '../src/invocation-handler.js'
 import { createRuntimeApp } from '../src/app.js'
@@ -48,6 +48,36 @@ describe('runtime /invocations', () => {
         ).toBe(2)
         expect(events.at(-1)?.type).toBe('run_finished')
         await runtime.dispose()
+    })
+
+    it('emits one error terminal for a failed ACP prompt', async () => {
+        const runtime = makeRuntime()
+        try {
+            const handler = createInvocationHandler(runtime)
+            const stream = await handler({ prompt: 'fail-prompt' })
+            const events = await Array.fromAsync(stream as AsyncIterable<{ type: string }>)
+            expect(events.filter(event => event.type === 'error' || event.type === 'run_finished'))
+                .toEqual([expect.objectContaining({ type: 'error', code: 'acp_error', message: 'fixture prompt failed' })])
+        } finally {
+            await runtime.dispose()
+        }
+    })
+
+    it('continues after malformed stdout and logs once without logging the raw line', async () => {
+        const runtime = makeRuntime()
+        const stderr = vi.spyOn(process.stderr, 'write')
+        try {
+            const handler = createInvocationHandler(runtime)
+            const stream = await handler({ prompt: 'malformed-stdout' })
+            const events = await Array.fromAsync(stream as AsyncIterable<{ type: string }>)
+            expect(events.at(-1)).toMatchObject({ type: 'run_finished', output: 'Hello' })
+            const logs = stderr.mock.calls.map(([line]) => String(line))
+            expect(logs.filter(line => line.includes('malformed ACP stdout'))).toHaveLength(1)
+            expect(logs.join('')).not.toContain('fixture-private-output')
+        } finally {
+            stderr.mockRestore()
+            await runtime.dispose()
+        }
     })
 
     it('returns one JSON response for stream:false', async () => {

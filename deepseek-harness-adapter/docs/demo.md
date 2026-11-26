@@ -1,6 +1,6 @@
 # ACP 部署与验证 demo
 
-本 demo 按 **ACP 路线**验证：`dsh acp` 常驻子进程 + AgentArts 记忆与 OBS 技能两个插件 + `agent_metadata` 配置注入。旧的 headless 入口（`demo.mjs`、`smoke.mjs`、`render-check.mjs`、`child-probe.mjs`、`render`/`inspect`/`demo`/`resident` 命令）已移除，详细集成说明见 [ACP-INTEGRATION.md](ACP-INTEGRATION.md)。
+本 demo 按 **ACP 路线**验证：`dsh acp` 常驻子进程 + AgentArts 记忆与 OBS 技能两个插件 + `agent_metadata` 配置注入。构建产物的协议烟测由 `scripts/smoke.mjs` 执行。详细集成说明见 [ACP-INTEGRATION.md](ACP-INTEGRATION.md)。
 
 ## 1. 准备
 
@@ -19,7 +19,7 @@ pnpm --filter @agentarts/harness-dsh-adapter run build
 
 ## 2. 配置环境变量
 
-`agent_metadata` 接受完整 JSON/YAML（model_config/memory_config/mcp_config/skills/user_bucket/system_prompt）。其余变量按部署需要注入（ACP 子进程全量继承 Adapter 环境）：
+`agent_metadata` 接受完整 JSON/YAML（model_config/memory_config/mcp_config/skills/user_bucket/system_prompt）。其余变量按部署需要注入（ACP 子进程使用显式环境变量白名单）：
 
 ```cmd
 set "agent_metadata={...完整 JSON...}"
@@ -49,7 +49,7 @@ node --input-type=module -e "import {loadAdapterConfig} from './adapter/dist/con
 node adapter/dist/main.js
 ```
 
-启动流程：`bootstrapAcpFromAgentMetadata()`（`agent_metadata` → ACP env + identity 换 key）→ `loadConfig()` → `createDshApp()`。看到 `listening on 127.0.0.1:8080` 即就绪。
+启动时 `loadHostedDshConfig()` 解析部署配置并解析凭据，随后 `startHostedHarness()` 装配协议入口。以 `GET /ping` 返回 `Healthy` 为就绪信号。
 
 ## 5. 发请求验证（用 Node，避免 PowerShell GBK 编码）
 
