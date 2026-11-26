@@ -43,10 +43,18 @@ export function applyAgentMetadataToAcpEnv(
 /** Parse agent_metadata, resolve credentials via the identity service, then apply ACP env. */
 export async function bootstrapAcpFromAgentMetadata(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const config = loadAdapterConfig({ env });
-  const credentials = await resolveCredentials(
-    config,
-    SdkCredentialProvider.fromRegion(),
-    AbortSignal.timeout(config.dsh.timeoutMs),
-  );
+  const timeoutMs = config.dsh.timeoutMs;
+  // The credential provider does not consume AbortSignal, so guard the whole resolution with an
+  // explicit timeout rejection: a stalled identity service must not hang process startup forever.
+  const timeout = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`identity credential resolution timed out after ${timeoutMs}ms (startup aborted)`));
+    }, timeoutMs);
+    timer.unref();
+  });
+  const credentials = await Promise.race([
+    resolveCredentials(config, SdkCredentialProvider.fromRegion(), AbortSignal.timeout(timeoutMs)),
+    timeout,
+  ]);
   applyAgentMetadataToAcpEnv(config, env, credentials);
 }

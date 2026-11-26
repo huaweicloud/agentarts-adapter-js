@@ -64,14 +64,9 @@ export function renderPatch(
   if (config.memory !== undefined) {
     expected.push({ id: 'dsh-agentarts-memory', disabled: false });
   }
+  // ACP 下 system prompt 由 DSH_SYSTEM_PROMPT 统一处理（promptStore + system-prompt-injector），
+  // 不再通过 profile 的 system-prompt 行 personaPrefix 下发，避免同一段指令被注入两遍。
   const systemRows: UnknownRecord[] = [];
-  if (config.systemPrompt.length > 0) {
-    const configValue = {
-      personaPrefix: `You are a coding agent powered by the {{model}} model.\n\n${config.systemPrompt}`,
-    };
-    systemRows.push({ id: 'system-prompt', config: configValue });
-    expected.push({ id: 'system-prompt', config: configValue });
-  }
   const skillRows: UnknownRecord[] = [];
   // OBS form ("skillId:skillName:skillVer") is handled by the dsh-skill-obs bundle, which also
   // supplies customSkillDirs. Only a real local directory is rendered here.
