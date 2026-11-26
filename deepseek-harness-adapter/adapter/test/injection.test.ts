@@ -7,7 +7,7 @@ import { parse } from 'yaml';
 
 import { buildChildEnv, loadAdapterConfig, redactEnv } from '../src/config.js';
 import { materializeProfile } from '../src/patch.js';
-import type { InvocationRequest } from '../src/adapter-types.js';
+import type { InvocationRequest } from '../src/types.js';
 
 const cleanup: string[] = [];
 afterEach(() => {
@@ -151,7 +151,7 @@ describe('profile rendering', () => {
     const manifest = JSON.parse(readFileSync(join(rendered.profileDir, 'package.json'), 'utf8'));
     expect(manifest.dsh.profile.bundles).toEqual([
       '@deepseek-ai/dsh-base',
-      '@deepseek-ai/dsh-headless',
+      '@deepseek-ai/dsh-acp-app',
       '@agentarts/dsh-agentarts-memory',
       '@agentarts/dsh-skill-obs',
     ]);

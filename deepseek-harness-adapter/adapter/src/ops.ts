@@ -9,7 +9,7 @@ import type {
   ReconcileReport,
   ExpectedPluginRow,
   UnknownRecord,
-} from './adapter-types.js';
+} from './types.js';
 import type { RenderedProfile } from './patch.js';
 
 function isRecord(value: unknown): value is UnknownRecord {

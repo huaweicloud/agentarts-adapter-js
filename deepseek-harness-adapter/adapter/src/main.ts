@@ -7,6 +7,7 @@ import { createWsHandler } from './handlers/ws.js'
 import { registerProtocolFaces } from './handlers/register.js'
 import { TaskRegistry } from './handlers/a2a.js'
 import { loadConfig, RuntimeConfig, createDshApp } from '@agentarts/harness-dsh-runtime'
+import { bootstrapAcpFromAgentMetadata } from './acp-config.js'
 
 
 /** 解析并发上限 env：非法值（NaN/0/负数/非整数）回退 15，避免限流静默失效 */
@@ -33,6 +34,8 @@ export function createDefaultApp(config: RuntimeConfig) {
 
 // 仅直接运行时启动服务；被测试导入时不启动
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    // agent_metadata → ACP env（在 runtime/loadConfig 之前注入，loadConfig 随后读取）
+    bootstrapAcpFromAgentMetadata()
     const config = loadConfig()
     if (config.agentRuntimeType === 'DSH') {
         createDshApp(config);

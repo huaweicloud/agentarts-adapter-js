@@ -13,7 +13,7 @@ import {
   MODEL_ENV,
   MODEL_PROVIDER_ENV,
   SENSITIVE_ENV_PATTERN,
-} from './adapter-env.js';
+} from '@agentarts/harness-dsh-shared';
 import { parse } from 'yaml';
 
 import type {
@@ -23,7 +23,7 @@ import type {
   MemorySettings,
   ModelProtocol,
   UnknownRecord,
-} from './adapter-types.js';
+} from './types.js';
 import type { ResolvedCredentials } from './credential.js';
 
 /** Inputs to configuration resolution. */
@@ -333,7 +333,7 @@ export function loadAdapterConfig(options: LoadConfigOptions = {}): AdapterConfi
       ).map((path) => absoluteFrom(cwd, path)),
       cwd: dshCwd,
       dshHome,
-      profile: 'agentrun',
+      profile: 'acp',
       timeoutMs,
     },
   };

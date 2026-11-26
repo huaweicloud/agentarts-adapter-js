@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 import { stringify } from 'yaml';
 
-import { MODEL_API_KEY_ENV } from './adapter-env.js';
+import { MODEL_API_KEY_ENV } from '@agentarts/harness-dsh-shared';
 
 import { mcpHeadersEnvName } from './config.js';
-import type { AdapterConfig, ExpectedPluginRow, UnknownRecord } from './adapter-types.js';
+import type { AdapterConfig, ExpectedPluginRow, UnknownRecord } from './types.js';
 
 /** Profile files rendered before DSH starts. */
 export interface RenderedProfile {
@@ -232,7 +232,7 @@ export function materializeProfile(
   const bundles = packageManifest.dsh?.profile?.bundles;
   const expectedBundles = [
     '@deepseek-ai/dsh-base',
-    '@deepseek-ai/dsh-headless',
+    '@deepseek-ai/dsh-acp-app',
     ...HOST_PLUGINS.map((plugin) => plugin.package),
   ];
   const bundlesMatch =

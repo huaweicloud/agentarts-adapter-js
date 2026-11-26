@@ -1,4 +1,4 @@
-import type { AdapterConfig } from './adapter-types.js';
+import type { AdapterConfig } from './types.js';
 
 /** Minimal surface adapter relies on from @huaweicloud/agentarts-sdk identity (package root). */
 interface SdkIdentitySurface {
