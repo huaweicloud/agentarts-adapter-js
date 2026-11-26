@@ -1,8 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
+import { AcpRuntime, loadConfig } from '../src/index.js'
 
-describe('runtime 包骨架', () => {
-    it('入口模块可被导入', async () => {
-        const mod = await import('../src/index.js')
-        expect(mod).toBeTypeOf('object')
-    })
+it('exports the runtime constructor and configuration loader', () => {
+    expect(AcpRuntime).toBeTypeOf('function')
+    expect(loadConfig).toBeTypeOf('function')
 })

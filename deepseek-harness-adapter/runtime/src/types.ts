@@ -47,7 +47,7 @@ export interface SystemPromptConfig {
     mode?: 'append' | 'replace' | 'replace-all'
 }
 
-export type AgentRuntimeType = 'DSH' | 'PI' | 'CODEX'
+export type AgentRuntimeType = 'DSH' | 'DSH_HEADLESS' | 'PI' | 'CODEX'
 
 export interface RuntimeConfig {
     acpCommand: string
@@ -74,6 +74,9 @@ export interface RuntimeConfig {
 }
 
 export interface TurnRequest {
+    stream?: boolean
+    eventId?: string
+    attempt?: number
     sessionId: string
     prompt: string
     cwd?: string
@@ -93,6 +96,7 @@ export interface SessionEntry {
     mcpServers: AcpMcpServer[]
     createdAt: number
     lastUsedAt: number
+    quarantined?: boolean
     current?: PromptRunLike
 }
 
@@ -117,6 +121,8 @@ export type RuntimeEvent =
           type: 'text_delta'
           channel: TextChannel
           delta: string
+          attemptId?: string
+          revision?: number
           messageId: string
           token: boolean
       }

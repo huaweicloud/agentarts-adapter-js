@@ -3,7 +3,10 @@
  * the SSE iterator (or frame adapter) pulls them in order.
  */
 export class AsyncQueue<T> {
-    private values: T[] = []
+    private values: Array<{ value: T; bytes: number }> = []
+    private bytes = 0
+
+    constructor(private readonly enabled = true) {}
     private waiters: Array<{
         resolve: (result: IteratorResult<T>) => void
         reject: (error: unknown) => void
@@ -11,14 +14,23 @@ export class AsyncQueue<T> {
     private ended = false
     private failure: unknown = null
 
-    push(value: T): void {
-        if (this.ended) return
+    push(value: T): boolean {
+        if (this.ended || !this.enabled) return true
+        const bytes = Buffer.byteLength(JSON.stringify(value))
+        if (bytes > 4 * 1024 * 1024) return false
         const waiter = this.waiters.shift()
         if (waiter !== undefined) {
             waiter.resolve({ done: false, value })
         } else {
-            this.values.push(value)
+            if (this.values.length >= 1024 || this.bytes + bytes > 4 * 1024 * 1024) {
+                this.values.length = 0
+                this.bytes = 0
+                return false
+            }
+            this.values.push({ value, bytes })
+            this.bytes += bytes
         }
+        return true
     }
 
     end(): void {
@@ -41,7 +53,9 @@ export class AsyncQueue<T> {
     async *[Symbol.asyncIterator](): AsyncIterator<T> {
         while (true) {
             if (this.values.length > 0) {
-                yield this.values.shift() as T
+                const item = this.values.shift()!
+                this.bytes -= item.bytes
+                yield item.value
                 continue
             }
             if (this.failure !== null) throw this.failure

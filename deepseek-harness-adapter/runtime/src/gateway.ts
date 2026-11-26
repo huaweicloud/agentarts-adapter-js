@@ -187,6 +187,16 @@ export class GatewayResolver {
 
     async resolve(override: GatewayConfig = {}): Promise<GatewayResolution | null> {
         const config = { ...this.config, ...override }
+        // Deployment credentials belong to this exact endpoint or control-plane selector.
+        const sameTarget = config.mcpUrl !== undefined
+            ? config.mcpUrl === this.config.mcpUrl
+            : this.config.mcpUrl === undefined && config.gatewayId === this.config.gatewayId
+                && config.targetId === this.config.targetId && config.targetName === this.config.targetName
+        if (!sameTarget) {
+            for (const field of CREDENTIAL_FIELDS) delete config[field]
+            Object.assign(config, override)
+            config.useAuthorizerKey = false
+        }
         const enabled =
             config.enabled ??
             (config.mcpUrl !== undefined || config.gatewayId !== undefined)

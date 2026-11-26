@@ -4,6 +4,8 @@ import { SessionQueue } from './session-queue.js'
 import type { SchedulerDeps } from '../types.js'
 import type { RoundRequest } from '@agentarts/harness-dsh-shared'
 
+const RECALL_TIMEOUT_MS = 300
+
 /**
  * 调度器门面：同 sessionId 串行（SessionQueue）+ 每轮一个子进程（runRound）。
  * 全局并发上限由 SDK maxConcurrency 执行，不在本层。
@@ -21,12 +23,10 @@ export class Scheduler {
                     resolve(cancelledHandle('round cancelled before spawn'))
                     return
                 }
-                // 召回失败降级为空，不阻塞执行
-                let recallResult = ''
-                try {
-                    recallResult = (await this.deps.recall?.(req)) ?? ''
-                } catch {
-                    recallResult = ''
+                const recallResult = await this.recall(req, signal)
+                if (signal?.aborted) {
+                    resolve(cancelledHandle('round cancelled during recall'))
+                    return
                 }
                 const spec = await this.deps.launchSpec(req, recallResult)
                 // spawn 前由 runRound 再检查一次 signal（覆盖 recall/launchSpec 期间取消）
@@ -37,5 +37,26 @@ export class Scheduler {
                 await handle.outcome
             }).catch(reject)
         })
+    }
+
+    private async recall(req: RoundRequest, signal?: AbortSignal): Promise<string> {
+        if (!this.deps.recall) return ''
+
+        const deadline = new AbortController()
+        const recallSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal
+        const timer = setTimeout(() => deadline.abort(new DOMException('Recall timed out', 'TimeoutError')), RECALL_TIMEOUT_MS)
+        let onAbort!: () => void
+        const cancelled = new Promise<string>((resolve) => {
+            onAbort = () => resolve('')
+            recallSignal.addEventListener('abort', onAbort, { once: true })
+        })
+        try {
+            return (await Promise.race([cancelled, this.deps.recall(req, recallSignal)])) ?? ''
+        } catch {
+            return ''
+        } finally {
+            clearTimeout(timer)
+            recallSignal.removeEventListener('abort', onAbort)
+        }
     }
 }

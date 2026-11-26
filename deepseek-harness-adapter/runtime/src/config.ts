@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { readMetadata, childEnvironment } from './metadata.js'
 import type {
     AgentRuntimeType,
     GatewayConfig,
@@ -25,8 +26,8 @@ function bool(value: string | undefined, fallback: boolean): boolean {
 }
 
 function int(value: string | undefined, fallback: number): number {
-    const parsed = Number.parseInt(value ?? '', 10)
-    return Number.isFinite(parsed) ? parsed : fallback
+    const parsed = Number(value)
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 /** Split an ACP_ARGS string, honoring single/double quotes. */
@@ -63,7 +64,15 @@ export function loadDotEnv(file = '.env'): void {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
-    loadDotEnv()
+    loadDotEnv(env.DSH_ENV_FILE)
+    const metadata = readMetadata(env)
+    const model = metadata.model_config
+    const acpEnv = childEnvironment(env)
+    if (!acpEnv.DEEPSEEK_API_KEY && model?.api_key) acpEnv.DEEPSEEK_API_KEY = model.api_key
+    if (!acpEnv.DEEPSEEK_BASE_URL && model?.base_url) acpEnv.DEEPSEEK_BASE_URL = model.base_url
+    Object.assign(acpEnv, jsonObject(stringEnv(env, 'DSH_ACP_CHILD_ENV')))
+    if (!acpEnv.DEEPSEEK_API_KEY && model?.credential_provider_name)
+        throw new Error('model_config.credential_provider_name requires a resolved model credential')
 
     const command =
         stringEnv(env, 'DSH_ACP_COMMAND') ??
@@ -111,7 +120,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
             stringEnv(env, 'DSH_AGENTARTS_GATEWAY_ENABLED') === undefined
                 ? undefined
                 : bool(stringEnv(env, 'DSH_AGENTARTS_GATEWAY_ENABLED'), false),
-        mcpUrl: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_MCP_URL'),
+        mcpUrl: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_MCP_URL') ?? metadata.mcp_gateway_config?.endpoint,
         gatewayId: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_ID'),
         targetId: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_TARGET_ID'),
         targetName: stringEnv(env, 'DSH_AGENTARTS_GATEWAY_TARGET_NAME'),
@@ -135,7 +144,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         useAuthorizerKey: bool(stringEnv(env, 'DSH_AGENTARTS_GATEWAY_USE_AUTHORIZER_KEY'), true),
     }
 
-    const systemText = stringEnv(env, 'DSH_SYSTEM_PROMPT')
+    const systemText = stringEnv(env, 'DSH_SYSTEM_PROMPT') ?? metadata.system_prompt
     const systemModeRaw = stringEnv(env, 'DSH_SYSTEM_PROMPT_MODE')
     const systemPrompt: SystemPromptConfig | undefined =
         systemText === undefined
@@ -153,10 +162,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         acpCommand: command,
         acpArgs: supervisedArgs,
         workspaceCwd: path.resolve(workspace),
-        acpEnv: jsonObject(stringEnv(env, 'DSH_ACP_CHILD_ENV')),
+        acpEnv,
         requestTimeoutMs: int(stringEnv(env, 'DSH_ACP_REQUEST_TIMEOUT_MS'), 60_000),
         verbose: bool(stringEnv(env, 'DSH_ACP_VERBOSE'), false),
-        model: stringEnv(env, 'DSH_ACP_MODEL'),
+        model: stringEnv(env, 'DSH_ACP_MODEL') ?? model?.name,
         reasoningEffort: stringEnv(env, 'DSH_ACP_REASONING_EFFORT'),
         systemPrompt,
         permission,

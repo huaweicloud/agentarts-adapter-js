@@ -1,7 +1,7 @@
 export { AcpRuntime } from './runtime.js'
 export { createRuntimeApp } from './app.js'
 export { createDshApp } from './main.js'
-export { createInvocationHandler } from './invocation-handler.js'
+export { createInvocationHandler, handleAction, normalizePayload, project } from './invocation-handler.js'
 export { loadConfig, splitArgs } from './config.js'
 export { AcpClient } from './acp-client.js'
 export { GatewayResolver, describeMcpServers, mergeMcpServers } from './gateway.js'

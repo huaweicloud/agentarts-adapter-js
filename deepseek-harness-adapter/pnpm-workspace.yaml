@@ -5,6 +5,13 @@ packages:
 
 allowBuilds:
     esbuild: true
+    protobufjs: false
+
+minimumReleaseAgeExclude:
+    - '@huaweicloud/agentarts-protocol-a2a@0.0.7'
+    - '@huaweicloud/agentarts-protocol-agui@0.0.7'
+    - '@huaweicloud/agentarts-sdk@0.0.7'
+    - '@huaweicloud/huaweicloud-sdk-agentidentity@0.0.7'
 
 # 与 SDK 仓一致：上游 core@3.1.222 运行期 require('uuid') 但未声明依赖，此处补上
 packageExtensions:

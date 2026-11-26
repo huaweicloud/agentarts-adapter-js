@@ -78,3 +78,12 @@ describe('gateway resolver', () => {
         expect(second).toBe(first)
     })
 })
+
+it('binds deployment credentials to the configured target and honors explicit request credentials', async () => {
+    const resolver = new GatewayResolver({ mcpUrl: 'https://gateway.example/a', apiKey: 'deployment',
+        headers: { 'x-custom': 'configured' } })
+    expect((await resolver.resolve({ mcpUrl: 'https://gateway.example/b' }))?.server.headers).toEqual([])
+    const other = await resolver.resolve({ mcpUrl: 'https://gateway.example/b', bearerToken: 'request' })
+    expect(other?.server.headers).toEqual([{ name: 'Authorization', value: 'Bearer request' }])
+    expect((await resolver.resolve())?.server.headers).toContainEqual({ name: 'Authorization', value: 'Bearer deployment' })
+})

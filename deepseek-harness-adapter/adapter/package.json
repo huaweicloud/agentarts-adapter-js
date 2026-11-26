@@ -13,14 +13,16 @@
     "dependencies": {
         "@agentarts/harness-dsh-runtime": "workspace:*",
         "@agentarts/harness-dsh-shared": "workspace:*",
-        "@huaweicloud/agentarts-sdk": "^0.0.1"
+        "@huaweicloud/agentarts-protocol-a2a": "0.0.7",
+        "@huaweicloud/agentarts-protocol-agui": "0.0.7",
+        "@huaweicloud/agentarts-sdk": "0.0.7"
     },
     "devDependencies": {
+        "@types/node": "^24.0.0",
+        "@types/ws": "^8.5.0",
+        "@vitest/coverage-v8": "^3.0.0",
         "typescript": "^5.6.0",
         "vitest": "^3.0.0",
-        "@vitest/coverage-v8": "^3.0.0",
-        "@types/node": "^24.0.0",
-        "ws": "^8.18.0",
-        "@types/ws": "^8.5.0"
+        "ws": "^8.18.0"
     }
 }

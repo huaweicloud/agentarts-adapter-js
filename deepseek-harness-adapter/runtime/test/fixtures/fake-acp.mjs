@@ -8,6 +8,7 @@ import { createInterface } from 'node:readline'
 const lines = createInterface({ input: process.stdin })
 let sessionId = 'fake-session'
 let attempt = 0
+const pending = new Map()
 let workspace = process.cwd()
 
 function send(message) {
@@ -27,6 +28,11 @@ lines.on('line', (line) => {
     try {
         message = JSON.parse(line)
     } catch {
+        return
+    }
+    if (message.method === 'session/cancel') {
+        pending.get(message.params.sessionId)?.({ stopReason: 'cancelled' })
+        pending.delete(message.params.sessionId)
         return
     }
     if (message.id === undefined) return
@@ -55,6 +61,22 @@ lines.on('line', (line) => {
         return
     }
     if (message.method === 'session/prompt') {
+        sessionId = message.params.sessionId
+        if (message.params.prompt[0]?.text === 'hang') {
+            pending.set(sessionId, reply)
+            return
+        }
+        if (message.params.prompt[0]?.text === 'fail-prompt') {
+            send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: 'fixture prompt failed' } })
+            return
+        }
+        if (message.params.prompt[0]?.text === 'malformed-stdout') {
+            process.stdout.write('fixture-private-output\nnull\n[]\ntrue\n')
+        }
+        if (message.params.prompt[0]?.text === 'ignore-cancel') return
+        if (message.params.prompt[0]?.text === 'flood') {
+            for (let i = 0; i < 1200; i++) update({ sessionUpdate: 'usage_update', used: i, size: 2000 })
+        }
         const text = 'Hello'
         update({
             sessionUpdate: 'agent_message_chunk',
