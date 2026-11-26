@@ -150,7 +150,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     const agentRuntimeType = (stringEnv(env, 'AGENT_RUNTIME_TYPE') || 'DSH') as AgentRuntimeType
     const agentrunDir = stringEnv(env, 'AGENTRUN_DIR') || '/home/agentarts'
     const acpEnv = jsonObject(stringEnv(env, 'DSH_ACP_CHILD_ENV'));
-    acpEnv.DSH_HOME = path.resolve(agentrunDir, '.dsh')
+    acpEnv.DSH_HOME = stringEnv(env, 'DSH_HOME') ?? path.resolve(agentrunDir, '.dsh')
 
     return {
         acpCommand: command,
