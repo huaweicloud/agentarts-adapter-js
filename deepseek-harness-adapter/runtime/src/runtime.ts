@@ -175,7 +175,11 @@ export class AcpRuntime {
             if (this.sessions.get(request.sessionId) !== entry || entry.quarantined) {
                 throw new RuntimeError('session closed during preparation', { code: 'session_unavailable', statusCode: 503 })
             }
-            const queue = new AsyncQueue<RuntimeEvent>(request.stream !== false)
+            const queue = new AsyncQueue<RuntimeEvent>(request.stream !== false, event => ({
+                type: 'event_dropped',
+                eventType: event.type,
+                reason: 'event_exceeds_buffer_limit',
+            }))
             const permissionBroker =
                 request.permission === undefined
                     ? this.permissionBroker

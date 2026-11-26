@@ -16,7 +16,7 @@ PORT=8080 node adapter/dist/main.js
 - `POST /invocations` 接受 `prompt`，默认返回 SSE；`stream:false` 返回含 `output` 和兼容字段 `result` 的 JSON。请求体的 `sessionId` 优先于 `x-hw-agentarts-session-id` 头。已知会话 ID 会在响应头回显。DSH 继续提供 list、close、cancel、set_config 管理动作。
 - `/ws` 支持同一连接多轮。文本增量使用 `delta`，工具事件使用 `tool_call` 和 `tool_result`。成功时 `final.text` 是校正后的完整正文，失败时返回一条 `error`。连接断开会取消该连接的当前轮次。
 - 排队期限由 `DSH_ACP_QUEUE_TIMEOUT_MS` 设置，默认 60 秒。执行期限由 `DSH_ACP_PROMPT_TIMEOUT_MS` 设置，默认 10 分钟。取消通知发出 5 秒后仍无回复时，runtime 尝试关闭对应 ACP 会话。关闭 RPC 使用 `DSH_ACP_REQUEST_TIMEOUT_MS`。无法确认关闭时隔离该会话，直到显式关闭成功或 ACP 进程更换。
-- 每轮待拉取的事件缓冲最多 1024 条、4 MiB。输出超限后取消该轮并返回 `output_limit`。仅需 JSON 结果时跳过事件缓存。
+- 每轮待拉取的事件缓冲最多 1024 条、4 MiB。等待中的消费者可直接接收大事件。无法缓冲的单个大事件会被省略，SSE 在缓冲有空间时报告 `event_dropped`。持续积压达到上限时取消该轮并返回 `output_limit`。仅需 JSON 结果时跳过事件缓存。
 
 ## A2A 与 AG-UI
 
@@ -36,7 +36,7 @@ A2A 的会话使用认证身份与 contextId 定位。断开订阅后可查询�
 
 ## 平台重试和配置
 
-HTTP 或 WS 携带 `eventId` 时，adapter 对同一 sessionId 和 eventId 做原子认领，`attempt` 记录尝试次数。已完成的相同输入重放最终结果，进行中或崩溃后结果未确定的事件返回 `event_pending`，相同键对应不同输入返回 `event_conflict`。HTTP 使用 409。重放只返回终态。设置 `AGENTARTS_EVENT_STORAGE_DIR` 将记录保存在该沙箱可持续访问的专用目录，默认 .agentarts-events。单一进程独占目录。存储容量和保留周期需要与平台的重试窗口匹配。
+HTTP 或 WS 携带 `eventId` 时，adapter 对同一 sessionId 和 eventId 做原子认领。成功结果和不可重试失败会重放终态。已结算的 502、503、504（包括 runner 的结果 Promise 拒绝）只允许更高的 `attempt` 重新认领，同一次和更早的 attempt 重放已有终态。在途请求或崩溃后结果不确定的事件返回 `event_pending`，相同键对应不同输入返回 `event_conflict`。HTTP 使用 409。上层只应在可接受重做轮次时增加 attempt。设置 `AGENTARTS_EVENT_STORAGE_DIR` 将记录保存在持久化目录，默认 .agentarts-events。单一进程独占目录，存储保留周期需要覆盖平台的重试窗口。
 
 配置可由 `agent_metadata`、`AGENT_METADATA` 或 `AGENT_METADATA_FILE` 提供，支持 `system_prompt`、`model_config.name/base_url/api_key`、`mcp_gateway_config.endpoint`。显式 DSH 环境配置优先。模型、网关和系统提示仍可使用 runtime 配置。创建会话时解析 MCP 和网关设置，后续轮次复用已建立的 ACP 会话。请求改用另一网关目标时只使用本次请求提供的凭证。宿主协议 token 和召回凭证不会作为默认子进程环境传入 DSH。需要额外子进程环境时使用部署侧 `DSH_ACP_CHILD_ENV`。
 

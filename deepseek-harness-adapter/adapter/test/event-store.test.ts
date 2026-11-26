@@ -33,3 +33,37 @@ it('claims concurrent retries once and restores the result from disk after reope
     await expect(reopened.runTurn({ ...request, prompt: 'different' })).rejects.toMatchObject({ code: 'event_conflict' })
     expect(calls).toBe(1)
 })
+
+it.each([502, 503, 504, 'rejected'] as const)('only a higher attempt can retry %s', async (failure) => {
+    const dir = await mkdtemp(join(tmpdir(), 'agentarts-event-'))
+    dirs.push(dir)
+    const request = { sessionId: 's', eventId: 'e', prompt: 'hello', attempt: 1 }
+    const success: HarnessResult = { ok: true, sessionId: 's', output: 'retried', stopReason: 'end_turn', error: null }
+    let calls = 0
+    let finish!: (result: HarnessResult) => void
+    const inner: HarnessRunner = {
+        ready: true,
+        async start() {},
+        async dispose() {},
+        async runTurn() {
+            calls++
+            const result = calls > 1
+                ? new Promise<HarnessResult>(resolve => { finish = resolve })
+                : failure === 'rejected'
+                  ? Promise.reject(new Error('runner lost connection'))
+                  : Promise.resolve({ ...success, ok: false, error: { code: 'retryable', message: 'failed', statusCode: failure } })
+            return { events: (async function* () {})(), result, cancel() {} }
+        },
+    }
+    let runner = new EventStoreRunner(inner, new FileProtocolStorage(dir))
+    expect((await (await runner.runTurn(request)).result).ok).toBe(false)
+    runner = new EventStoreRunner(inner, new FileProtocolStorage(dir))
+    expect((await (await runner.runTurn(request)).result).ok).toBe(false)
+    expect(calls).toBe(1)
+    const retry = await runner.runTurn({ ...request, attempt: 2 })
+    await expect(runner.runTurn({ ...request, attempt: 3 })).rejects.toMatchObject({ code: 'event_pending' })
+    finish(success)
+    expect(await retry.result).toEqual(success)
+    expect(await (await runner.runTurn({ ...request, attempt: 4 })).result).toEqual(success)
+    expect(calls).toBe(2)
+})

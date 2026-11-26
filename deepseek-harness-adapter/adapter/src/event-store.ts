@@ -19,8 +19,13 @@ export class EventStoreRunner implements HarnessRunner {
         const options = { ...request.options }
         for (const name of ['eventId', 'attempt', 'sessionId', 'prompt', 'message', 'input', 'action', 'stream']) delete options[name]
         const fingerprint = protocolFingerprint([request.prompt, options])
-        const claimed = await this.storage.update<RecordValue>(scope, key, previous =>
-            previous ?? { owner, fingerprint, attempt: request.attempt ?? 1 })
+        const attempt = request.attempt ?? 1
+        const claimed = await this.storage.update<RecordValue>(scope, key, previous => {
+            if (!previous || (previous.fingerprint === fingerprint && attempt > previous.attempt && retryable(previous.result))) {
+                return { owner, fingerprint, attempt }
+            }
+            return previous
+        })
         if (!claimed) throw new Error('Missing event claim')
         if (claimed.owner !== owner) {
             if (claimed.fingerprint !== fingerprint) throw conflict('event_conflict', 'eventId was already used with different input')
@@ -35,7 +40,13 @@ export class EventStoreRunner implements HarnessRunner {
             await this.storage.update<RecordValue>(scope, key, previous => previous?.owner === owner ? undefined : previous)
             throw error
         }
-        const result = turn.result.then(async outcome => {
+        const result = turn.result.catch((error: unknown): HarnessResult => ({
+            ok: false,
+            output: '',
+            sessionId: request.sessionId,
+            stopReason: 'error',
+            error: { code: 'runner_failed', statusCode: 502, message: error instanceof Error ? error.message : String(error) },
+        })).then(async outcome => {
             const snapshot = JSON.parse(JSON.stringify(outcome)) as HarnessResult
             await this.storage.update<RecordValue>(scope, key, previous => {
                 if (previous?.owner !== owner) throw new Error('Event claim ownership changed')
@@ -47,6 +58,12 @@ export class EventStoreRunner implements HarnessRunner {
         void result.catch(() => {})
         return { ...turn, result }
     }
+}
+
+function retryable(result: HarnessResult | undefined): boolean {
+    if (!result || result.ok) return false
+    const status = result.error?.statusCode
+    return status === 502 || status === 503 || status === 504
 }
 
 function conflict(code: string, message: string) {

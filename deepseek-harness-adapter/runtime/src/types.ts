@@ -152,6 +152,7 @@ export type RuntimeEvent =
           source: string
       }
     | { type: 'error'; code: string; message: string; statusCode?: number; data?: unknown }
+    | { type: 'event_dropped'; eventType: string; reason: 'event_exceeds_buffer_limit' }
     | { type: 'run_finished'; stopReason: string; output: string; thought: string }
 
 export interface TurnResult {
