@@ -341,16 +341,29 @@ export class AcpRuntime {
             ) as Record<string, unknown> | undefined
             if (option === undefined) return null
             const current = option.currentValue
-            const values = Array.isArray(option.options) ? option.options : []
-            const match = values.find((item) => {
-                if (item === null || typeof item !== 'object') return false
-                const value = (item as Record<string, unknown>).value
-                const name = (item as Record<string, unknown>).name
-                return value === this.config.model || name === this.config.model
-            }) as Record<string, unknown> | undefined
+            const groups = Array.isArray(option.options) ? option.options : []
+            // configOptions 的 options 可能是 group 嵌套（每项含 group/options 子数组），
+            // 也可能是扁平选项（每项含 value/name）。两种都要能按模型名匹配到具体的 ACP value。
+            for (const group of groups) {
+                if (group === null || typeof group !== 'object') continue
+                const candidates = Array.isArray((group as Record<string, unknown>).options)
+                    ? ((group as Record<string, unknown>).options as unknown[])
+                    : [group]
+                for (const candidate of candidates) {
+                    if (candidate === null || typeof candidate !== 'object') continue
+                    const value = (candidate as Record<string, unknown>).value
+                    const name = (candidate as Record<string, unknown>).name
+                    if (value === this.config.model || name === this.config.model) {
+                        return {
+                            id,
+                            value: String(value ?? current ?? this.config.model ?? ''),
+                        }
+                    }
+                }
+            }
             return {
                 id,
-                value: String(match?.value ?? current ?? this.config.model ?? ''),
+                value: String(current ?? this.config.model ?? ''),
             }
         }
         const model = this.config.model === undefined ? null : find('model')

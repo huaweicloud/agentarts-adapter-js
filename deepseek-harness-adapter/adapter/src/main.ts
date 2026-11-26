@@ -35,7 +35,7 @@ export function createDefaultApp(config: RuntimeConfig) {
 // 仅直接运行时启动服务；被测试导入时不启动
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     // agent_metadata → ACP env（在 runtime/loadConfig 之前注入，loadConfig 随后读取）
-    bootstrapAcpFromAgentMetadata()
+    await bootstrapAcpFromAgentMetadata()
     const config = loadConfig()
     if (config.agentRuntimeType === 'DSH') {
         createDshApp(config);
