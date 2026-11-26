@@ -174,6 +174,18 @@ test('search sends the Bearer header and the expected body', async () => {
   }
 })
 
+test('remove issues a DELETE on the record path', async () => {
+  const stub = await startStub({ status: 204 })
+  try {
+    await gatewayFor(stub.url).remove('mem-9')
+    const [request] = stub.requests
+    assert.equal(request.method, 'DELETE')
+    assert.equal(request.url, '/v1/core/spaces/space-1/memories/mem-9')
+  } finally {
+    await stub.close()
+  }
+})
+
 test('pushMessages creates the session then posts parts-shaped messages', async () => {
   const stub = await startStub({ body: { messages: [{ id: 'a' }, { id: 'b' }] } })
   try {
@@ -239,8 +251,14 @@ test('a slow search hits the short recall deadline, not the write deadline', asy
       return true
     })
     // Same config, but a write uses timeoutMs (5000 by default) and completes.
-    const accepted = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).pushMessages('s', [{ role: 'user', content: 'x' }])
+    const accepted = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).pushMessages(
+      'session-1',
+      [{ role: 'user', content: 'x' }],
+    )
     assert.equal(accepted, 1)
+    // An explicit search can override the short recall deadline.
+    const hits = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).search('q', { timeoutMs: 5000 })
+    assert.equal(hits.length, 1)
   } finally {
     await stub.close()
   }

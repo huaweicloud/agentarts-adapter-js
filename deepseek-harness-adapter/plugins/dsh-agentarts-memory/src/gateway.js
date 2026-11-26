@@ -16,7 +16,6 @@
  * | call | request |
  * | --- | --- |
  * | search | `POST /v1/core/spaces/{space_id}/memories/search` |
- * | save | `POST /v1/core/spaces/{space_id}/memories` |
  * | remove | `DELETE /v1/core/spaces/{space_id}/memories/{memory_id}` |
  * | session | `POST /v1/core/spaces/{space_id}/sessions` |
  * | messages | `POST /v1/core/spaces/{space_id}/sessions/{session_id}/messages` |
@@ -268,21 +267,29 @@ export class MemoryGateway {
   }
 
   /**
+   * Delete one memory record.
+   *
+   * @param {string} id - cloud memory record id
+   * @returns {Promise<void>}
+   */
+  async remove(id) {
+    await this.request('DELETE', `${this.#spacePath()}/memories/${encodeURIComponent(String(id))}`, {
+      label: 'memory delete',
+    })
+  }
+
+  /**
    * Push conversation messages so the platform extracts long-term memories.
    *
    * @param {string} sessionId - DSH session id, reused as the cloud session id
    * @param {Array<{role: string, content: string}>} messages - plain text turns
-   * @param {string} [idempotencyKey] - per-push dedupe key. Must change on every capture so
-   *   the cloud accepts repeated appends to the same session; reusing the session id would
-   *   make each subsequent append look like a retry of the first and be rejected.
+   * @param {{idempotencyKey?: string}} [options] - per-batch key; defaults to the session id
    * @returns {Promise<number>} number of messages accepted
    */
-  async pushMessages(sessionId, messages, idempotencyKey) {
+  async pushMessages(sessionId, messages, options = {}) {
     const id = String(sessionId ?? '').trim()
     if (id === '') throw new GatewayError('http', 'session id must not be empty')
     if (!Array.isArray(messages) || messages.length === 0) return 0
-    const key =
-      typeof idempotencyKey === 'string' && idempotencyKey.trim() !== '' ? idempotencyKey.trim() : id
 
     const space = this.#spacePath()
 
@@ -308,7 +315,7 @@ export class MemoryGateway {
           parts: [{ type: 'text', text: message.content }],
         })),
         is_force_extract: true,
-        idempotency_key: key,
+        idempotency_key: options.idempotencyKey ?? id,
       },
       label: 'memory message push',
     })

@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -196,10 +197,15 @@ function materializeHostPlugins(profileDir: string): void {
 
 /**
  * Install the profile's runtime dependencies with pnpm instead of copying the pnpm
- * link tree: copying breaks the isolated .pnpm resolution, while a real install
- * produces a correct node_modules (ObsClient and its transitive deps resolve).
+ * link tree. Skipped when node_modules already matches the current package.json
+ * fingerprint, so repeated launches do not reinstall on every invocation.
  */
-function installProfileDependencies(profileDir: string): void {
+function installProfileDependencies(profileDir: string, packageJson: string): void {
+  const fingerprint = createHash('sha256').update(packageJson).digest('hex');
+  const markerPath = join(profileDir, '.deps-fingerprint');
+  if (existsSync(join(profileDir, 'node_modules')) && existsSync(markerPath)) {
+    if (readFileSync(markerPath, 'utf8').trim() === fingerprint) return;
+  }
   const result = spawnSync('pnpm', ['install', '--prod', '--ignore-scripts', '--reporter', 'append-only'], {
     cwd: profileDir,
     stdio: 'inherit',
@@ -209,6 +215,7 @@ function installProfileDependencies(profileDir: string): void {
   if (result.status !== 0) {
     throw new Error(`profile dependency install failed (exit ${String(result.status)})`);
   }
+  writeFileSync(markerPath, `${fingerprint}\n`);
 }
 
 /** Materialize package.json, cordis.patch.yml and the empty cordis.yml under DSH_HOME/profiles/agentrun. */
@@ -245,7 +252,7 @@ export function materializeProfile(
   mkdirSync(profileDir, { recursive: true });
   materializeHostPlugins(profileDir);
   writeFileSync(join(profileDir, 'package.json'), `${JSON.stringify(packageManifest, null, 2)}\n`);
-  installProfileDependencies(profileDir);
+  installProfileDependencies(profileDir, JSON.stringify(packageManifest, null, 2));
   writeFileSync(join(profileDir, 'cordis.patch.yml'), patch);
   writeFileSync(join(profileDir, 'cordis.yml'), rootConfig);
   return { profileDir, renderedPatch: patch, expected };

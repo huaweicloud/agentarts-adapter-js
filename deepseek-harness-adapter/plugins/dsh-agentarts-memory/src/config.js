@@ -151,8 +151,6 @@ export function resolveConfig(raw, env = process.env) {
     endpoint: asString(env[ENV_ENDPOINT]) || asString(r.endpoint),
     actorId: asString(env[ENV_USER_ID]) || asString(r.actorId) || DEFAULT_ACTOR_ID,
     assistantId: asString(r.assistantId) || 'dsh',
-    strategyId: asString(r.strategyId),
-    strategyType: asString(r.strategyType) || 'semantic',
     timeoutMs: asNumber(r.timeoutMs, 5000, { min: 100, max: 120000 }),
     rerank: resolveRerank(env, asBool(r.rerank, true)),
     recall: {

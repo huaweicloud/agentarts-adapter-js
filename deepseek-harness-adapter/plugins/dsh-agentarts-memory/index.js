@@ -76,8 +76,9 @@ export function apply(ctx, rawConfig) {
     log.info(`inactive — ${readiness.reason}`)
   }
 
+  // The gateway keeps no sockets or timers between calls — every request owns
+  // its own AbortSignal — so there is nothing to dispose when the plugin unloads.
   const gateway = new MemoryGateway(config)
-  ctx.effect(() => () => gateway.close(), `${name}: client`)
 
   if (config.tools.enabled && readiness.ok) {
     applyTools(ctx, gateway, config)
@@ -141,7 +142,10 @@ function applyStatusCommand(ctx, config, readiness, gateway) {
         const query = raw.slice('search '.length).trim()
         if (query === '') return { kind: 'error', text: 'usage: /agentarts search <query>' }
         try {
-          const hits = await gateway.search(query, { topK: config.recall.topK })
+          const hits = await gateway.search(query, {
+            topK: config.recall.topK,
+            timeoutMs: config.timeoutMs,
+          })
           if (hits.length === 0) return { kind: 'success', text: 'no matching memory.' }
           const lines = hits.map((hit) => `- [${hit.score.toFixed(2)}] (${hit.strategyType || 'memory'}) ${hit.content}`)
           return { kind: 'success', text: lines.join('\n') }
@@ -205,7 +209,7 @@ function describeCapabilities(config, readiness) {
     '',
     `agent tools (${tools})`,
     '  · huawei_memory_search(query, top_k?, strategy_type?) — semantic search over the space',
-    '  · huawei_memory_save(content) — store a fact as short-term memory; the platform extracts long-term memories from it',
+    '  · huawei_memory_save(content) — queue one durable fact as short-term memory for platform extraction',
     '',
     'you can do',
     '  · /agentarts                 status: switches, space, region, actor, endpoint, readiness',

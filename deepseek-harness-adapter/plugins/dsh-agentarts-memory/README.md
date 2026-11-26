@@ -11,7 +11,7 @@ the blocking round trip only happens when it is actually needed.
 | Capability | Switch | Behaviour |
 | --- | --- | --- |
 | Whole plugin | `enabled` | `false` registers nothing at all — identical to not having the plugin |
-| Tools | `tools.enabled` | `huawei_memory_search` and `huawei_memory_save` |
+| Tools | `tools.enabled` | `huawei_memory_search` and `huawei_memory_save` (queues a fact as short-term memory; the platform extracts the long-term record) |
 | Recall | `recall.mode` | Default `tool`: inject nothing, but tell the agent the memory exists so it can decide. `auto`: also search before each turn's first step and prepend the best hits. `off`: no recall and no hint |
 | Capture | `capture.enabled` | after a session ends, push its dialogue turns so the platform extracts memories |
 
@@ -77,7 +77,7 @@ environment variables (environment wins whenever it is set):
 
 ```yaml
 - id: dsh-agentarts-memory
-  name: '@agentarts/dsh-agentarts-memory'
+  name: '@laynepeng/dsh-agentarts-memory'
   config:
     enabled: true
     spaceId: ''                  # fallback only; prefer $AGENTARTS_MEMORY_SPACE_ID
@@ -86,7 +86,6 @@ environment variables (environment wins whenever it is set):
     endpoint: ''                 # fallback only; prefer $AGENTARTS_MEMORY_DATA_ENDPOINT
     actorId: ''                  # fallback only; prefer $AGENTARTS_MEMORY_USER_ID
     assistantId: dsh
-    strategyId: ''               # leave empty unless your space requires one
     timeoutMs: 5000
     rerank: true                 # fallback; prefer $AGENTARTS_MEMORY_RERANK
     recall:

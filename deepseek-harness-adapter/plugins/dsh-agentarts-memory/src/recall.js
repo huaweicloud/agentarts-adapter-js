@@ -54,11 +54,13 @@ export function extractQuery(messages) {
 
 /**
  * Render the recall block, dropping low-score hits and respecting a token
- * budget. Returns an empty string when nothing fits.
+ * budget. Returns the rendered text plus the exact hits written into it, so the
+ * caller can mark only those as injected — a hit truncated by the budget stays
+ * eligible for a later step.
  *
  * @param {ReadonlyArray<{content: string, score: number, strategyType?: string}>} hits
  * @param {{maxInjectTokens: number, minScore: number}} limits
- * @returns {string}
+ * @returns {{block: string, included: Array<{content: string, score: number, strategyType?: string}>}}
  */
 export function renderRecallBlock(hits, limits) {
   const usable = (Array.isArray(hits) ? hits : [])
@@ -66,11 +68,12 @@ export function renderRecallBlock(hits, limits) {
     .filter((hit) => (typeof hit.score === 'number' ? hit.score : 0) >= limits.minScore)
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
 
-  if (usable.length === 0) return ''
+  if (usable.length === 0) return { block: '', included: [] }
 
   const budgetChars = Math.max(120, Math.round(limits.maxInjectTokens * CHARS_PER_TOKEN))
   const header = `${RECALL_MARKER} Possibly relevant long-term memories recalled from Huawei Cloud (score in brackets). Use huawei_memory_search for more, and ignore anything unrelated to the current task.`
   const lines = []
+  const included = []
   let used = header.length
 
   for (const hit of usable) {
@@ -78,11 +81,12 @@ export function renderRecallBlock(hits, limits) {
     const line = `- [${(hit.score ?? 0).toFixed(2)}] (${type}) ${hit.content}`
     if (used + line.length + 1 > budgetChars) break
     lines.push(line)
+    included.push(hit)
     used += line.length + 1
   }
 
-  if (lines.length === 0) return ''
-  return [header, ...lines].join('\n')
+  if (lines.length === 0) return { block: '', included: [] }
+  return { block: [header, ...lines].join('\n'), included }
 }
 
 /**
@@ -160,13 +164,15 @@ export function applyRecall(ctx, gateway, config, readiness) {
       }
 
       const fresh = (hits ?? []).filter((hit) => seen === undefined || !seen.has(hit.content))
-      const block = renderRecallBlock(fresh, {
+      const { block, included } = renderRecallBlock(fresh, {
         maxInjectTokens: config.recall.maxInjectTokens,
         minScore: config.recall.minScore,
       })
       if (block === '') return next()
 
-      for (const hit of fresh) seen?.add(hit.content)
+      // Only hits that really entered the block are considered injected; a hit
+      // dropped by the token budget stays eligible for a later step.
+      for (const hit of included) seen?.add(hit.content)
 
       return {
         kind: 'enter',

@@ -20,7 +20,7 @@ test('extractQuery tolerates a bare string and junk input', () => {
 })
 
 test('renderRecallBlock drops hits under minScore and orders by score', () => {
-  const block = renderRecallBlock(
+  const { block, included } = renderRecallBlock(
     [
       { content: 'low', score: 0.1, strategyType: 'semantic' },
       { content: 'high', score: 0.9, strategyType: 'user_preference' },
@@ -33,12 +33,13 @@ test('renderRecallBlock drops hits under minScore and orders by score', () => {
   assert.match(lines[1], /0\.90.*user_preference.*high/)
   assert.match(lines[2], /0\.50.*episodic.*mid/)
   assert.equal(lines.length, 3, 'low-score hit must be dropped')
+  assert.deepEqual(included.map((hit) => hit.content), ['high', 'mid'])
 })
 
 test('renderRecallBlock returns empty text when nothing qualifies', () => {
-  assert.equal(renderRecallBlock([], LIMITS), '')
-  assert.equal(renderRecallBlock([{ content: 'x', score: 0.01 }], LIMITS), '')
-  assert.equal(renderRecallBlock([{ content: '', score: 0.9 }], LIMITS), '')
+  assert.deepEqual(renderRecallBlock([], LIMITS), { block: '', included: [] })
+  assert.deepEqual(renderRecallBlock([{ content: 'x', score: 0.01 }], LIMITS), { block: '', included: [] })
+  assert.deepEqual(renderRecallBlock([{ content: '', score: 0.9 }], LIMITS), { block: '', included: [] })
 })
 
 test('renderRecallBlock respects the token budget', () => {
@@ -47,10 +48,13 @@ test('renderRecallBlock respects the token budget', () => {
     score: 0.9 - i * 0.01,
   }))
   const budget = { maxInjectTokens: 100, minScore: 0 }
-  const block = renderRecallBlock(hits, budget)
+  const { block, included } = renderRecallBlock(hits, budget)
   assert.ok(block.length <= 100 * CHARS_PER_TOKEN, `block ${block.length} chars exceeds budget`)
   const kept = block.split('\n').length - 1
   assert.ok(kept > 0 && kept < hits.length, `expected truncation, kept ${kept}`)
+  // Only the emitted hits may be marked as injected; the rest stay eligible.
+  assert.equal(included.length, kept)
+  assert.ok(included.every((hit) => block.includes(hit.content)))
 })
 
 test('createRecallMessage builds a frozen, identified user message', () => {

@@ -11,6 +11,8 @@
  * @module dsh-agentarts-memory/tools
  */
 
+import { randomUUID } from 'node:crypto'
+
 import { GatewayError } from './gateway.js'
 
 /**
@@ -32,8 +34,8 @@ function own(ctx, register) {
 
 /** Tool guidance appended to the system prompt when the tools are on. */
 export const TOOLS_PROMPT = [
-  'huawei_memory_search searches the shared cloud long-term memory (Huawei Cloud AgentArts) by meaning;',
-  'huawei_memory_save stores a fact as short-term memory for this session, and the platform extracts long-term memories from it automatically.',
+  'huawei_memory_search searches a shared cloud long-term memory (Huawei Cloud AgentArts) by meaning;',
+  'huawei_memory_save queues one durable fact as short-term memory so the platform can extract it into the long-term memory asynchronously.',
   'Search before asking the user to repeat context. Save only durable facts the user would want remembered',
   '(preferences, project decisions, corrections) — never one-off requests, secrets or credentials.',
 ].join(' ')
@@ -126,7 +128,10 @@ export function applyTools(ctx, gateway, config) {
       const strategyType = typeof raw.strategy_type === 'string' ? raw.strategy_type : undefined
 
       try {
-        const hits = await gateway.search(query, { topK, strategyType })
+        // Explicit searches are allowed the operator timeout: the short recall
+        // deadline exists to protect an automatic step, not a call the model
+        // (or the operator) decided to make.
+        const hits = await gateway.search(query, { topK, strategyType, timeoutMs: config.timeoutMs })
         return {
           total: hits.length,
           results: hits.map((hit) => ({
@@ -145,7 +150,7 @@ export function applyTools(ctx, gateway, config) {
   own(ctx, () => ctx.tools.register({
     name: 'huawei_memory_save',
     description:
-      'Save a fact as short-term memory for this session. The platform later extracts long-term memories from it automatically.',
+      'Queue one durable fact as short-term memory in this session. The memory platform extracts long-term memories from it according to the space strategies; extraction is asynchronous, so the fact may not be searchable immediately. Use for stable preferences, project decisions and corrections only.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -161,28 +166,40 @@ export function applyTools(ctx, gateway, config) {
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['accepted'],
+        required: ['session_id', 'messages', 'content'],
         properties: {
-          accepted: { type: 'integer' },
+          session_id: { type: 'string' },
+          messages: { type: 'integer' },
+          content: { type: 'string' },
         },
       },
       render(_args, value) {
-        return [{ type: 'text', text: `Saved to short-term memory (${value?.accepted ?? 0} message(s)); the platform will extract long-term memories from it.` }]
+        return [
+          {
+            type: 'text',
+            text: `Queued for memory extraction in session ${value?.session_id ?? '(none)'} (${value?.messages ?? 0} message(s)): ${value?.content ?? ''}`,
+          },
+        ]
       },
     },
     async execute(args, exec) {
       const raw = args !== null && typeof args === 'object' ? args : {}
       const content = String(raw.content ?? '').trim()
       if (content === '') throw new Error('content must not be empty')
+
       const sessionId = exec?.agent?.session?.id
       if (sessionId === undefined || String(sessionId) === '') {
-        throw new Error('short-term memory save requires an active session')
+        throw new Error('huawei_memory_save needs an active session')
       }
-      const key = `${String(sessionId)}:${Date.now()}`
 
       try {
-        const accepted = await gateway.pushMessages(String(sessionId), [{ role: 'user', content }], key)
-        return { accepted }
+        // Short-term memory is the session message stream; the platform turns it
+        // into long-term records. The idempotency key is per call so repeated
+        // saves in one session are all accepted.
+        const pushed = await gateway.pushMessages(String(sessionId), [{ role: 'user', content }], {
+          idempotencyKey: `save-${randomUUID()}`,
+        })
+        return { session_id: String(sessionId), messages: pushed, content }
       } catch (error) {
         throw toolFailure(error)
       }
