@@ -148,12 +148,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
                           : 'append',
               }
     const agentRuntimeType = (stringEnv(env, 'AGENT_RUNTIME_TYPE') || 'DSH') as AgentRuntimeType
+    const agentrunDir = stringEnv(env, 'AGENTRUN_DIR') || '/home/agentarts'
+    const acpEnv = jsonObject(stringEnv(env, 'DSH_ACP_CHILD_ENV'));
+    acpEnv.DSH_HOME = path.resolve(agentrunDir, '.dsh')
 
     return {
         acpCommand: command,
         acpArgs: supervisedArgs,
         workspaceCwd: path.resolve(workspace),
-        acpEnv: jsonObject(stringEnv(env, 'DSH_ACP_CHILD_ENV')),
+        acpEnv,
         requestTimeoutMs: int(stringEnv(env, 'DSH_ACP_REQUEST_TIMEOUT_MS'), 60_000),
         verbose: bool(stringEnv(env, 'DSH_ACP_VERBOSE'), false),
         model: stringEnv(env, 'DSH_ACP_MODEL'),
@@ -173,5 +176,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         port: int(stringEnv(env, 'PORT'), 8080),
         logLevel: stringEnv(env, 'DSH_ACP_LOG_LEVEL') ?? 'info',
         agentRuntimeType,
+        agentrunDir,
     }
 }

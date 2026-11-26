@@ -71,6 +71,7 @@ export interface RuntimeConfig {
     port: number
     logLevel: string
     agentRuntimeType: AgentRuntimeType
+    agentrunDir: string
 }
 
 export interface TurnRequest {

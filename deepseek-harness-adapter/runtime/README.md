@@ -45,6 +45,10 @@ plugins/
 `node dist/main.js` loads `.env` from the current directory (or
 `DSH_ENV_FILE`); inherited process env wins. See `.env.example`.
 
+`AGENTRUN_DIR` sets the agent runtime root: the `dsh` child receives
+`DSH_HOME=<AGENTRUN_DIR>/.dsh` (default `/home/agentarts/.dsh`), so profiles,
+credentials and sessions live under that root instead of `~/.dsh`.
+
 Key variables: `DSH_ACP_COMMAND`, `DSH_ACP_ARGS`, `DSH_AGENT_CWD`,
 `DSH_ACP_PERMISSION_MODE`, `DSH_ACP_APPROVAL_CALLBACK_URL`,
 `DSH_AGENTARTS_GATEWAY_MCP_URL` / `GATEWAY_ID` + target,
