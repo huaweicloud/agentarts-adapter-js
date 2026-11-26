@@ -1,0 +1,4 @@
+{
+  "name": "OBS Skills",
+  "description": "Download AgentArts skills from OBS into the SFS mount directory before the first model call."
+}

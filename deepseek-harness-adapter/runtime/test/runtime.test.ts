@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { GatewayResolver } from '../src/gateway.js'
+import { AcpClient } from '../src/acp-client.js'
 import { AcpRuntime } from '../src/runtime.js'
 import { loadConfig } from '../src/config.js'
 import type { RuntimeConfig, RuntimeEvent } from '../src/types.js'
@@ -146,6 +147,39 @@ it('releases a cancelled caller during gateway discovery before opening an ACP s
     } finally {
         finish?.()
         discovery.mockRestore()
+        await runtime.dispose()
+    }
+})
+
+it('prefers the exact AgentArts route and passes deployment MCP endpoints into session/new', async () => {
+    const official = JSON.stringify(['deepseek-official', 'shared'])
+    const managed = JSON.stringify(['agentarts-model', 'shared'])
+    const newSession = vi.spyOn(AcpClient.prototype, 'newSession').mockResolvedValue({
+        sessionId: 'fake',
+        configOptions: [{
+            id: 'model', currentValue: official, options: [
+                { options: [{ value: official, name: 'shared' }] },
+                { options: [{ value: managed, name: 'Display name' }] },
+            ],
+        }],
+    })
+    const setConfig = vi.spyOn(AcpClient.prototype, 'setConfigOption').mockResolvedValue({})
+    const servers = [
+        { name: 'first', type: 'http' as const, url: 'https://first.example/mcp' },
+        { name: 'second', type: 'http' as const, url: 'https://second.example/mcp' },
+    ]
+    const runtime = new AcpRuntime({ ...config(), model: 'shared', deployedMcpServers: servers })
+    try {
+        const turn = await runtime.runTurn({
+            sessionId: 'deployment', prompt: 'hello', stream: false,
+            mcpServers: [{ name: 'FIRST', type: 'http', url: 'https://request.example/mcp' }],
+        })
+        expect((await turn.result).ok).toBe(true)
+        expect(newSession).toHaveBeenCalledWith(expect.objectContaining({ mcpServers: servers }))
+        expect(setConfig).toHaveBeenCalledWith('fake', 'model', managed)
+    } finally {
+        newSession.mockRestore()
+        setConfig.mockRestore()
         await runtime.dispose()
     }
 })

@@ -348,6 +348,9 @@ export class AcpRuntime {
         if (gateway !== null) {
             mcpServers = mergeMcpServers(mcpServers, [gateway.server])
         }
+        if (this.config.deployedMcpServers?.length) {
+            mcpServers = mergeMcpServers(mcpServers, this.config.deployedMcpServers)
+        }
 
         if (signal?.aborted) throw cancelledBeforeStart()
         let info: { sessionId: string; configOptions?: unknown }
@@ -396,12 +399,14 @@ export class AcpRuntime {
             const options = Array.isArray(configOptions) ? configOptions : []
             const selector = options.find(option => option?.id === 'model')
             // rc.3 encodes the provider and model together as the opaque selection value.
-            const official = JSON.stringify(['deepseek-official', model])
+            const provider = this.config.modelProvider
+            const routes = (provider ? [provider] : ['agentarts-model', 'deepseek-official'])
+                .map(name => JSON.stringify([name, model]))
             const groups: Array<{ value?: string; name?: string; options?: Array<{ value: string; name?: string }> }> =
                 selector?.options ?? []
             const values = groups.flatMap(group => group.options ?? (group.value ? [{ name: group.name, value: group.value }] : []))
-            const selection = values.find(item => item.value === model || item.value === official)
-                ?? values.find(item => item.name === model)
+            const selection = routes.map(route => values.find(item => item.value === route)).find(Boolean)
+                ?? (provider === undefined ? values.find(item => item.value === model || item.name === model) : undefined)
             if (!selection) throw new RuntimeError('Configured model is unavailable in the ACP session', {
                 code: 'model_unavailable', statusCode: 502,
             })

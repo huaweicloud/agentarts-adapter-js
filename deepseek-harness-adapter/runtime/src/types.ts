@@ -58,6 +58,8 @@ export interface RuntimeConfig {
     requestTimeoutMs: number
     verbose: boolean
     model?: string
+    modelProvider?: string
+    deployedMcpServers?: AcpMcpServer[]
     reasoningEffort?: string
     systemPrompt?: SystemPromptConfig
     permission: PermissionConfig

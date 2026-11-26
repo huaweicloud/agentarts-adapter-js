@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "AgentArts memory",
+    "description": "Huawei Cloud AgentArts long-term memory for DSH: semantic recall injected before each step, memory search/save tools, and optional post-session capture. Each capability has its own switch.",
+    "detail": "docs/DETAIL.md"
+  }
+}

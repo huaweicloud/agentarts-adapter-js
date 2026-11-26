@@ -15,7 +15,8 @@
         "@agentarts/harness-dsh-shared": "workspace:*",
         "@huaweicloud/agentarts-protocol-a2a": "0.0.7",
         "@huaweicloud/agentarts-protocol-agui": "0.0.7",
-        "@huaweicloud/agentarts-sdk": "0.0.7"
+        "@huaweicloud/agentarts-sdk": "0.0.7",
+        "yaml": "^2.9.1"
     },
     "devDependencies": {
         "@types/node": "^24.0.0",

@@ -27,6 +27,9 @@ importers:
       '@huaweicloud/agentarts-sdk':
         specifier: 0.0.7
         version: 0.0.7(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(zod@4.6.7)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -46,6 +49,24 @@ importers:
       ws:
         specifier: ^8.18.0
         version: 8.23.0
+
+  plugins/dsh-agentarts-memory: {}
+
+  plugins/dsh-skill-obs:
+    dependencies:
+      esdk-obs-nodejs:
+        specifier: ^3.26.10
+        version: 3.26.10(supports-color@7.2.0)
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+    optionalDependencies:
+      '@huaweicloud/agentarts-sdk':
+        specifier: 0.0.1
+        version: 0.0.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(zod@4.6.7)
 
   runtime:
     dependencies:
@@ -345,6 +366,19 @@ packages:
     peerDependencies:
       '@huaweicloud/agentarts-sdk': ^0.0.7
 
+  '@huaweicloud/agentarts-sdk@0.0.1':
+    resolution: {integrity: sha512-R287IQxwh9OL4stjWocMT1ua3GpfaCpGNj2jzpbCIGb0/SUthQjXfrdJKgrm6Jmptx9B3lxs3D71vYEq7fq1hA==}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
+    peerDependencies:
+      '@langchain/core': '>=1.0.0'
+      '@langchain/langgraph': '>=1.0.0'
+    peerDependenciesMeta:
+      '@langchain/core':
+        optional: true
+      '@langchain/langgraph':
+        optional: true
+
   '@huaweicloud/agentarts-sdk@0.0.7':
     resolution: {integrity: sha512-Eum2dw8D0SvJHWqFDG4NnMMkDgTchbbnsttuGyyEBjyPmPXV4IS1RmXRKDjd9bI5zp4eJj1rDlebAr64vr8OOg==}
     engines: {node: '>=20.0.0'}
@@ -357,6 +391,10 @@ packages:
         optional: true
       '@langchain/langgraph':
         optional: true
+
+  '@huaweicloud/huaweicloud-sdk-agentidentity@0.0.1':
+    resolution: {integrity: sha512-jia8DwRYoo5Wyi8CumO+njAIQGSi4fKr5bEssScQJSzLHDz74oujk7x4GT5VLO/XJWIwYDX6kky0N45/atWh/A==}
+    engines: {node: '>=20.0.0'}
 
   '@huaweicloud/huaweicloud-sdk-agentidentity@0.0.7':
     resolution: {integrity: sha512-IkW1hJmE/qPe+ddR0gEbRfcSES3IiR3u9uI9uUzAFFvkSGR897+979Ox5z+hUfNKH/maG+FpOIRkaBlDUhNrmg==}
@@ -674,6 +712,9 @@ packages:
     resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
     engines: {node: '>=12'}
 
+  anynum@1.0.1:
+    resolution: {integrity: sha512-N6//FLET/tXYNM/F6ABca1oH6fWB+KlTt909Le28WMDBk8oaT4vY17DCrwg2MvmuqUKt3Ni4N5dGJ/EoBgcO6A==}
+
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
     engines: {node: '>=12'}
@@ -855,6 +896,10 @@ packages:
   escape-html@1.0.3:
     resolution: {integrity: sha512-NiSupZ4OeuGwr68lGIeym/ksIZMJodUGOSCZ/FSnTxcrekbvqrgdUxlJOMpijaKZVjAJrWrGs/6Jy8OMuyj9ow==}
 
+  esdk-obs-nodejs@3.26.10:
+    resolution: {integrity: sha512-2wiaIp9HTx4I3HpK0rp4d9T2CpwjorjfW+HNYu0yEXjSSTmb5RmU+ZZbLmp3ozm/EKyTpuyfBXS9gvDy0me0Aw==}
+    engines: {node: '>=10.12.0'}
+
   estree-walker@3.0.3:
     resolution: {integrity: sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==}
 
@@ -893,6 +938,10 @@ packages:
   fast-uri@3.1.9:
     resolution: {integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==}
 
+  fast-xml-parser@5.3.7:
+    resolution: {integrity: sha512-JzVLro9NQv92pOM/jTCR6mHlJh2FGwtomH8ZQjhFj/R29P2Fnj38OgPJVtcvYw6SuKClhgYuwUZf5b3rd8u2mA==}
+    hasBin: true
+
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
@@ -901,6 +950,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   finalhandler@2.1.1:
     resolution: {integrity: sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA==}
@@ -1346,6 +1398,9 @@ packages:
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
 
+  strnum@2.5.1:
+    resolution: {integrity: sha512-UM4nTLWzQiDBseVxUGxN0wJzIk0UU89Qi7pKXz9qISo+lhviJikTuikBsK/oFRlpvYHvSdz0TVoLyQ+sEpYwxA==}
+
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
@@ -1739,6 +1794,28 @@ snapshots:
       rxjs: 7.8.1
       zod: 4.6.7
 
+  '@huaweicloud/agentarts-sdk@0.0.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(zod@4.6.7)':
+    dependencies:
+      '@huaweicloud/huaweicloud-sdk-agentidentity': 0.0.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      '@huaweicloud/huaweicloud-sdk-core': 3.1.222(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      '@huaweicloud/huaweicloud-sdk-iam': 3.1.222(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      '@huaweicloud/huaweicloud-sdk-swr': 3.1.222(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      commander: 15.1.0
+      undici: 7.30.2
+      uuid: 14.0.3
+      ws: 8.23.0
+      yaml: 2.9.1
+    optionalDependencies:
+      '@modelcontextprotocol/sdk': 1.32.2(supports-color@7.2.0)(zod@4.6.7)
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - bufferutil
+      - debug
+      - supports-color
+      - utf-8-validate
+      - zod
+    optional: true
+
   '@huaweicloud/agentarts-sdk@0.0.7(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(zod@4.6.7)':
     dependencies:
       '@huaweicloud/huaweicloud-sdk-agentidentity': 0.0.7(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
@@ -1759,6 +1836,15 @@ snapshots:
       - supports-color
       - utf-8-validate
       - zod
+
+  '@huaweicloud/huaweicloud-sdk-agentidentity@0.0.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)':
+    dependencies:
+      '@huaweicloud/huaweicloud-sdk-core': 3.1.222(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      uuid: 14.0.3
+    transitivePeerDependencies:
+      - debug
+      - supports-color
+    optional: true
 
   '@huaweicloud/huaweicloud-sdk-agentidentity@0.0.7(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)':
     dependencies:
@@ -2065,6 +2151,8 @@ snapshots:
 
   ansi-styles@6.2.3: {}
 
+  anynum@1.0.1: {}
+
   assertion-error@2.0.1: {}
 
   ast-v8-to-istanbul@0.3.12:
@@ -2258,6 +2346,13 @@ snapshots:
 
   escape-html@1.0.3: {}
 
+  esdk-obs-nodejs@3.26.10(supports-color@7.2.0):
+    dependencies:
+      fast-xml-parser: 5.3.7
+      log4js: 6.9.1(supports-color@7.2.0)
+    transitivePeerDependencies:
+      - supports-color
+
   estree-walker@3.0.3:
     dependencies:
       '@types/estree': 1.0.10
@@ -2324,9 +2419,15 @@ snapshots:
   fast-uri@3.1.9:
     optional: true
 
+  fast-xml-parser@5.3.7:
+    dependencies:
+      strnum: 2.5.1
+
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
+
+  fflate@0.8.3: {}
 
   finalhandler@2.1.1(supports-color@7.2.0):
     dependencies:
@@ -2817,6 +2918,10 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
+
+  strnum@2.5.1:
+    dependencies:
+      anynum: 1.0.1
 
   supports-color@7.2.0:
     dependencies:

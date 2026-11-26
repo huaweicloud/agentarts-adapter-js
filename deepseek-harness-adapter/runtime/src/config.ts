@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { normalizeMcpServers } from './gateway.js'
 import { readMetadata, childEnvironment } from './metadata.js'
 import type {
     AgentRuntimeType,
@@ -52,6 +53,17 @@ function jsonObject(value: string | undefined): Record<string, string> {
     } catch {
         return {}
     }
+}
+
+function parseDeployedMcpServers(value: string | undefined) {
+    if (value === undefined) return []
+    let parsed: unknown
+    try { parsed = JSON.parse(value) } catch { throw new Error('Invalid AGENTRUN_ACP_MCP_SERVERS JSON') }
+    const servers = normalizeMcpServers(parsed)
+    if (!Array.isArray(parsed) || parsed.length !== servers.length) {
+        throw new Error('AGENTRUN_ACP_MCP_SERVERS must contain a valid array of MCP servers')
+    }
+    return servers
 }
 
 export function loadDotEnv(file = '.env'): void {
@@ -166,6 +178,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
         requestTimeoutMs: int(stringEnv(env, 'DSH_ACP_REQUEST_TIMEOUT_MS'), 60_000),
         verbose: bool(stringEnv(env, 'DSH_ACP_VERBOSE'), false),
         model: stringEnv(env, 'DSH_ACP_MODEL') ?? model?.name,
+        modelProvider: stringEnv(env, 'DSH_ACP_MODEL_PROVIDER'),
+        deployedMcpServers: parseDeployedMcpServers(stringEnv(env, 'AGENTRUN_ACP_MCP_SERVERS')),
         reasoningEffort: stringEnv(env, 'DSH_ACP_REASONING_EFFORT'),
         systemPrompt,
         permission,

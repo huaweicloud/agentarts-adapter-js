@@ -1,0 +1,22 @@
+{
+  "name": "dsh-profile-agentrun",
+  "private": true,
+  "dependencies": {
+    "@agentarts/dsh-agentarts-memory": "file:./vendor/dsh-agentarts-memory",
+    "@agentarts/dsh-skill-obs": "file:./vendor/dsh-skill-obs",
+    "esdk-obs-nodejs": "^3.26.10",
+    "fflate": "^0.8.2",
+    "yaml": "^2.9.1",
+    "@huaweicloud/agentarts-sdk": "0.0.7"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-acp-app",
+        "@agentarts/dsh-agentarts-memory",
+        "@agentarts/dsh-skill-obs"
+      ]
+    }
+  }
+}

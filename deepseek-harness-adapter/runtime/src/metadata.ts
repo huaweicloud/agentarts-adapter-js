@@ -13,6 +13,10 @@ export function readMetadata(env: NodeJS.ProcessEnv): Metadata {
     let data
     try { data = JSON.parse(text) } catch { throw new Error('Invalid agent_metadata JSON') }
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid agent_metadata')
+    if (data.agent_metadata !== undefined) {
+        data = data.agent_metadata
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid agent_metadata wrapper')
+    }
     for (const key of ['model_config', 'mcp_gateway_config']) {
         if (data[key] != null && (typeof data[key] !== 'object' || Array.isArray(data[key])))
             throw new Error('Invalid agent_metadata.' + key)

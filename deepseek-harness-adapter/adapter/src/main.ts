@@ -11,7 +11,8 @@ import { startHostedHarness } from './app.js'
 export { createHarnessApp, startHostedHarness } from './app.js'
 export type { HarnessRunner, HarnessTurn, HarnessRequest, HarnessEvent, HarnessResult } from './runner.js'
 import { DshRunner } from './dsh.js'
-import { loadConfig, type RuntimeConfig, handleAction } from '@agentarts/harness-dsh-runtime'
+import { loadConfig, loadDotEnv, type RuntimeConfig, handleAction } from '@agentarts/harness-dsh-runtime'
+import { loadHostedDshConfig } from './acp-config.js'
 
 
 /** 解析并发上限 env：非法值（NaN/0/负数/非整数）回退 15，避免限流静默失效 */
@@ -38,14 +39,16 @@ export function createDefaultApp(config: RuntimeConfig) {
 
 // 仅直接运行时启动服务；被测试导入时不启动
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    const config = loadConfig()
-    if (config.agentRuntimeType === 'DSH') {
+    loadDotEnv(process.env.DSH_ENV_FILE)
+    const runtimeType = process.env.AGENT_RUNTIME_TYPE || 'DSH'
+    if (runtimeType === 'DSH') {
+        const config = await loadHostedDshConfig()
         const dsh = new DshRunner(config)
         startHostedHarness(dsh, config, (action, body, context) => handleAction(dsh.runtime, action, body, context))
     } else {
-        if (config.agentRuntimeType !== 'DSH_HEADLESS') {
-            throw new Error('Unsupported harness type: ' + config.agentRuntimeType)
+        if (runtimeType !== 'DSH_HEADLESS') {
+            throw new Error('Unsupported harness type: ' + runtimeType)
         }
-        createDefaultApp(config)
+        createDefaultApp(loadConfig())
     }
 }
