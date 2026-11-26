@@ -1,0 +1,4 @@
+- id: skill-registry
+  config:
+    customSkillDirs:
+      - !!js (process.env.AGENTRUN_DIR || "/home/agentarts") + "/skills"

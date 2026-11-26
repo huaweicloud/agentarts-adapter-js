@@ -14,6 +14,8 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 export const PLUGIN_DIR = path.resolve(here, '../plugins')
 export const TOKEN_PATCH = path.join(PLUGIN_DIR, 'assistant-token-stream.patch.yml')
 export const SYSTEM_PROMPT_PATCH = path.join(PLUGIN_DIR, 'system-prompt.patch.yml')
+export const SKILLS_PATCH = path.join(PLUGIN_DIR, 'skills-dir.patch.yml')
+export const SESSIONS_PATCH = path.join(PLUGIN_DIR, 'sessions-dir.patch.yml')
 export const SSE_BRIDGE = path.join(PLUGIN_DIR, 'mcp-sse-bridge.mjs')
 
 function stringEnv(env: NodeJS.ProcessEnv, name: string): string | undefined {
@@ -111,6 +113,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
                       : []),
                   '--patch',
                   SYSTEM_PROMPT_PATCH,
+                  '--patch',
+                  SKILLS_PATCH,
+                  '--patch',
+                  SESSIONS_PATCH,
               ]
             : splitArgs(argsText)
 

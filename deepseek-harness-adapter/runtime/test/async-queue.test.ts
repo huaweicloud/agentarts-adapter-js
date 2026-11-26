@@ -23,4 +23,26 @@ describe('ACP event buffer', () => {
         queue.end()
         expect(await Array.fromAsync(queue)).toEqual([notice, smallerEvent])
     })
+
+    it('rejects waiting readers and later iterations with the failure', async () => {
+        const queue = new AsyncQueue<number>()
+        const iterator = queue[Symbol.asyncIterator]()
+        const pending = iterator.next()
+        queue.fail(new Error('acp child closed'))
+        await expect(pending).rejects.toThrow('acp child closed')
+        await expect(Array.fromAsync(queue)).rejects.toThrow('acp child closed')
+    })
+
+    it('ignores events after end and keeps result-only queues empty', async () => {
+        const queue = new AsyncQueue<number>()
+        queue.end()
+        expect(queue.push(1)).toBe(true)
+        expect(await Array.fromAsync(queue)).toEqual([])
+
+        const resultOnly = new AsyncQueue<number>(false)
+        expect(resultOnly.push(2)).toBe(true)
+        expect(resultOnly.push(3)).toBe(true)
+        resultOnly.end()
+        expect(await Array.fromAsync(resultOnly)).toEqual([])
+    })
 })
