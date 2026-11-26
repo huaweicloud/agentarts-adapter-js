@@ -94,6 +94,45 @@ describe('runtime /invocations', () => {
         await runtime.dispose()
     })
 
+    it('非法 timeoutMs 直接 400，不进队列', async () => {
+        const runtime = makeRuntime()
+        const handler = createInvocationHandler(runtime)
+        for (const timeoutMs of ['abc', 0, -5, Number.NaN]) {
+            const response = (await handler({
+                prompt: 'hi',
+                sessionId: 'bad-timeout',
+                timeoutMs,
+            })) as { statusCode?: number; body?: string | Buffer | null }
+            expect(response.statusCode).toBe(400)
+            const body = JSON.parse(String(response.body)) as { error?: { code?: string } }
+            expect(body.error?.code).toBe('invalid_request')
+        }
+        await runtime.dispose()
+    })
+
+    it('管理动作保留 RuntimeError 状态码（session 不存在 → 404）', async () => {
+        const runtime = makeRuntime()
+        const handler = createInvocationHandler(runtime)
+        const response = (await handler({
+            action: 'set_config',
+            sessionId: 'missing',
+            model: 'm',
+        })) as { statusCode?: number; body?: string | Buffer | null }
+        expect(response.statusCode).toBe(404)
+        await runtime.dispose()
+    })
+
+    it('dispose 后调用返回 503', async () => {
+        const runtime = makeRuntime()
+        await runtime.dispose()
+        const handler = createInvocationHandler(runtime)
+        const response = (await handler({ prompt: 'hi', sessionId: 'late' })) as {
+            statusCode?: number
+            body?: string | Buffer | null
+        }
+        expect(response.statusCode).toBe(503)
+    })
+
     it('serves SSE through the composed AgentArts app', async () => {
         const runtime = makeRuntime()
         const app = createRuntimeApp(runtime)

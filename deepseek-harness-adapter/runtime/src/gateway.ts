@@ -147,6 +147,23 @@ function buildHeaders(config: GatewayConfig, gateway: unknown): {
     return { headers, authType }
 }
 
+/** 请求级覆盖里只要出现凭据/自定义头，就不复用缓存（避免跨调用方串用凭据）。 */
+const CREDENTIAL_FIELDS = [
+    'apiKey',
+    'apiKeyHeader',
+    'bearerToken',
+    'accessToken',
+    'accessTokenHeader',
+    'userId',
+    'userIdHeader',
+    'headers',
+    'useAuthorizerKey',
+] as const satisfies ReadonlyArray<keyof GatewayConfig>
+
+function carriesCredentials(override: GatewayConfig): boolean {
+    return CREDENTIAL_FIELDS.some((field) => override[field] !== undefined)
+}
+
 function redactUrl(value: string): string {
     try {
         const url = new URL(value)
@@ -180,8 +197,13 @@ export class GatewayResolver {
             targetId: config.targetId,
             targetName: config.targetName,
             transport: config.transport,
+            serverName: config.serverName,
+            serverType: config.serverType,
         })
-        const cached = this.cache.get(key)
+        // 请求级覆盖带了凭据/自定义头时既不读缓存也不回填：
+        // 否则 TTL 内不同调用方会命中同一份解析结果、复用上一位的凭据。
+        const cacheable = !carriesCredentials(override)
+        const cached = cacheable ? this.cache.get(key) : undefined
         const now = Date.now()
         if (cached !== undefined && cached.expiresAt > now) return cached.value
 
@@ -212,10 +234,12 @@ export class GatewayResolver {
             }
             const meta = this.meta(config, target, endpoint, 'sse-bridge', authType, headers)
             const value = { server, meta }
-            this.cache.set(key, {
-                value,
-                expiresAt: now + (config.cacheTtlMs ?? 300_000),
-            })
+            if (cacheable) {
+                this.cache.set(key, {
+                    value,
+                    expiresAt: now + (config.cacheTtlMs ?? 300_000),
+                })
+            }
             return value
         }
 
@@ -229,7 +253,9 @@ export class GatewayResolver {
             server,
             meta: this.meta(config, target, endpoint, 'http', authType, headers),
         }
-        this.cache.set(key, { value, expiresAt: now + (config.cacheTtlMs ?? 300_000) })
+        if (cacheable) {
+            this.cache.set(key, { value, expiresAt: now + (config.cacheTtlMs ?? 300_000) })
+        }
         return value
     }
 

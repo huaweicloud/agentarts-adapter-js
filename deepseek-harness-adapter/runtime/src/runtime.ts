@@ -253,10 +253,10 @@ export class AcpRuntime {
             this.routePermission(params),
         )
         client.onClosed(() => {
-            if (this.client === client) {
-                this.client = null
-                this.clientPromise = null
-            }
+            // 旧 client 迟到的 close 不得清掉新 client 的会话与事件路由
+            if (this.client !== client) return
+            this.client = null
+            this.clientPromise = null
             this.sessions.clear()
             this.byAcp.clear()
         })
@@ -265,10 +265,13 @@ export class AcpRuntime {
             await client.start()
             await client.initialize()
             return client
-        })().catch((error) => {
-            this.client?.dispose()
-            this.client = null
-            this.clientPromise = null
+        })().catch(async (error) => {
+            // 先等本次创建的 child 释放完，再允许新建 client；只清本次创建的引用
+            await client.dispose().catch(() => undefined)
+            if (this.client === client) {
+                this.client = null
+                this.clientPromise = null
+            }
             throw error
         })
         return this.clientPromise

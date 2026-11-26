@@ -59,4 +59,22 @@ describe('gateway resolver', () => {
         })
         expect(target?.endpoint).toBe('https://x/mcp')
     })
+
+    it('请求级凭据覆盖不复用缓存', async () => {
+        const resolver = new GatewayResolver({ mcpUrl: 'https://gw.example.com/mcp' })
+        const alice = await resolver.resolve({ apiKey: 'alice' })
+        const bob = await resolver.resolve({ apiKey: 'bob' })
+        expect(alice?.server.headers).toEqual([{ name: 'Authorization', value: 'Bearer alice' }])
+        expect(bob?.server.headers).toEqual([{ name: 'Authorization', value: 'Bearer bob' }])
+    })
+
+    it('无凭据覆盖的解析复用 TTL 缓存', async () => {
+        const resolver = new GatewayResolver({
+            mcpUrl: 'https://gw.example.com/mcp',
+            apiKey: 'shared',
+        })
+        const first = await resolver.resolve()
+        const second = await resolver.resolve()
+        expect(second).toBe(first)
+    })
 })

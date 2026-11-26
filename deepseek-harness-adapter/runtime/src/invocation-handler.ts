@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { JsonResponse, type RequestContext } from '@huaweicloud/agentarts-sdk/sdk/runtime'
 
 import type { AcpRuntime } from './runtime.js'
+import { RuntimeError, toRuntimeError } from './errors.js'
 import type { RuntimeEvent, TurnRequest } from './types.js'
 
 export const SESSION_HEADER = 'x-hw-agentarts-session-id'
@@ -20,6 +21,11 @@ function normalizePayload(payload: unknown, context?: RequestContext): TurnReque
     }
     const sessionId =
         asString(body.sessionId) ?? asString(context?.sessionId) ?? randomUUID()
+    // NaN 会被 setTimeout 当作 0 立即触发；非法值必须挡在入队前
+    const timeoutMs = body.timeoutMs === undefined ? undefined : Number(body.timeoutMs)
+    if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
+        throw new Error('timeoutMs must be a positive number')
+    }
     return {
         sessionId,
         prompt,
@@ -41,7 +47,7 @@ function normalizePayload(payload: unknown, context?: RequestContext): TurnReque
                       | 'replace'
                       | 'replace-all',
               }),
-        ...(body.timeoutMs === undefined ? {} : { timeoutMs: Number(body.timeoutMs) }),
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
         ...(body.permission === undefined
             ? {}
             : {
@@ -54,8 +60,10 @@ function normalizePayload(payload: unknown, context?: RequestContext): TurnReque
 }
 
 function errorResponse(error: unknown): JsonResponse {
+    // 保留 RuntimeError 的状态码（404/409/502/503）；其余按请求错误处理
+    const statusCode = error instanceof RuntimeError ? error.statusCode : 400
     return new JsonResponse({
-        statusCode: 400,
+        statusCode,
         content: {
             error: {
                 code:
@@ -91,7 +99,7 @@ export function createInvocationHandler(runtime: AcpRuntime) {
         try {
             handle = await runtime.runTurn(request)
         } catch (error) {
-            return errorResponse(error)
+            return errorResponse(toRuntimeError(error))
         }
 
         if (!request.stream) {
@@ -176,7 +184,7 @@ async function handleAction(
             content: { error: { code: 'invalid_action', message: `unknown action: ${action}` } },
         })
     } catch (error) {
-        return errorResponse(error)
+        return errorResponse(toRuntimeError(error))
     }
 }
 
