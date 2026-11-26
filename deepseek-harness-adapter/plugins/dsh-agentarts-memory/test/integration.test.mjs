@@ -97,7 +97,9 @@ test('an unconfigured plugin stays mounted but offers no tools', () => {
   apply(ctx, resolveConfig({ enabled: true }, {}))
   assert.equal(log.tools.length, 0, 'no tool that cannot work')
   assert.equal(log.commands.length, 1, 'status command remains available')
-  assert.deepEqual(log.listeners.map((listener) => listener.name), ['agent/pre-step'])
+  // The default recall mode is `tool`: no pre-step listener is registered.
+  assert.deepEqual(log.listeners.map((listener) => listener.name), [])
+  assert.equal(log.sections.length, 0, 'no tool guidance without a ready space')
 })
 
 test('an environment-only deployment is ready and reaches the stub', async () => {
@@ -123,6 +125,36 @@ test('an environment-only deployment is ready and reaches the stub', async () =>
     delete process.env.AGENTARTS_MEMORY_SPACE_ID
     delete process.env.AGENTARTS_MEMORY_DATA_ENDPOINT
     await stub.close()
+  }
+})
+
+test('recall.mode tool skips injection but tells the agent the memory exists', () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED('http://127.0.0.1:1', { recall: { mode: 'tool' } }))
+
+    assert.deepEqual(log.listeners.map((listener) => listener.name), [], 'no pre-step listener in tool mode')
+    assert.deepEqual(log.tools.map((tool) => tool.name), ['huawei_memory_search', 'huawei_memory_save'])
+    assert.equal(log.sections.length, 1)
+    assert.match(log.sections[0].text, /cross-session long-term memory/)
+    assert.match(log.sections[0].text, /huawei_memory_search/)
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+  }
+})
+
+test('recall.mode off injects nothing and adds no memory hint', () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED('http://127.0.0.1:1', { recall: { mode: 'off' } }))
+
+    assert.equal(log.listeners.length, 0, 'no pre-step listener in off mode')
+    assert.equal(log.sections.length, 1, 'tool guidance is still registered')
+    assert.doesNotMatch(log.sections[0].text, /cross-session long-term memory/)
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
   }
 })
 
@@ -248,12 +280,33 @@ test('the status command reports switches and endpoint', async () => {
     apply(ctx, CONFIGURED(stub.url, { capture: { enabled: true } }))
     const status = await log.commands[0].handler({ rawInput: '' })
     assert.equal(status.kind, 'success')
-    assert.match(status.text, /switches: plugin on · tools on · recall on · capture on/)
+    assert.match(status.text, /switches: plugin on · tools on · recall tool · capture on/)
     assert.match(status.text, /status: ready/)
     assert.match(status.text, new RegExp(`endpoint: ${stub.url}`))
+    assert.match(status.text, /agentarts help/)
   } finally {
     delete process.env.STUB_MEMORY_KEY
     await stub.close()
+  }
+})
+
+test('/agentarts help lists what the plugin does and what it does not', async () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED('http://127.0.0.1:1', { recall: { mode: 'tool' }, capture: { enabled: true } }))
+
+    const help = await log.commands[0].handler({ rawInput: 'help' })
+    assert.equal(help.kind, 'success')
+    assert.match(help.text, /what this plugin can do/)
+    assert.match(help.text, /huawei_memory_search/)
+    assert.match(help.text, /agent tools \(on\)/)
+    assert.match(help.text, /not provided/)
+    assert.match(help.text, /recall tool/)
+    assert.match(help.text, /capture on/)
+    assert.match(help.text, /status: ready/)
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
   }
 })
 

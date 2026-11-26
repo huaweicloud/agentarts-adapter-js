@@ -51,12 +51,24 @@ installed but completely out of the way.
 Both tools also require a configured space and API key; without them the plugin
 stays mounted but registers no tools, and the plugin log states why.
 
-**`recall.enabled`** — on every `agent/pre-step` the incoming user text is used as
-a search query (skipped below `minQueryChars`), the top hits above `minScore` are
-rendered into one context block under `maxInjectTokens`, and that block is
-prepended as an extra user message. Already-injected memory texts are remembered
-per agent so a multi-step turn does not repeat itself. Searches are cached for
-`cacheMs`.
+**`recall.mode`** — three values:
+
+- `tool` (default): no `agent/pre-step` listener is registered. The tool guidance
+  gains one extra sentence telling the model the memory exists and when to query
+  it; the model decides whether to pay for the round trip. Tools stay available.
+- `auto`: on every `agent/pre-step` the incoming user text is used as a
+  search query (skipped below `minQueryChars`), the top hits above `minScore` are
+  rendered into one context block under `maxInjectTokens`, and that block is
+  prepended as an extra user message. Already-injected memory texts are
+  remembered per agent so a multi-step turn does not repeat itself. Searches are
+  cached for `cacheMs`.
+- `off`: neither injection nor hint; tools stay available if `tools.enabled` is
+  true. The legacy boolean still works: `recall.enabled: true` maps to `auto` and
+  `false` to `off`; with neither key set the mode is `tool`.
+
+Recall uses `recall.timeoutMs` (default 1000ms) for the search request, because
+it blocks the step that is about to call the model; `timeoutMs` (default 5000ms)
+still governs writes and capture. Either failure path degrades silently.
 
 **`capture.enabled`** (default `false`) — on `session/disposed` the dialogue turns
 of the session are pushed with `is_force_extract: true`, using the DSH session id

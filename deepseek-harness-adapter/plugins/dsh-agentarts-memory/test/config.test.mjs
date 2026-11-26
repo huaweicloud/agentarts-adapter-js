@@ -28,11 +28,37 @@ test('resolveConfig fills every default', () => {
   assert.equal(config.rerank, true)
   assert.deepEqual(
     { ...config.recall },
-    { enabled: true, topK: 5, minScore: 0.35, maxInjectTokens: 600, cacheMs: 60000, minQueryChars: 8 },
+    {
+      mode: 'tool',
+      enabled: true,
+      timeoutMs: 1000,
+      topK: 5,
+      minScore: 0.35,
+      maxInjectTokens: 600,
+      cacheMs: 60000,
+      minQueryChars: 8,
+    },
   )
   assert.equal(config.tools.enabled, true)
   // Capture is deliberately opt-in.
   assert.equal(config.capture.enabled, false)
+})
+
+test('recall.mode selects the recall strategy and defaults to tool', () => {
+  assert.equal(resolveConfig({}, {}).recall.mode, 'tool')
+  assert.equal(resolveConfig({ recall: { mode: 'auto' } }, {}).recall.mode, 'auto')
+  assert.equal(resolveConfig({ recall: { mode: 'tool' } }, {}).recall.mode, 'tool')
+  assert.equal(resolveConfig({ recall: { mode: ' OFF ' } }, {}).recall.mode, 'off')
+  // Unknown strings fall back to the default (tool), or to the legacy boolean.
+  assert.equal(resolveConfig({ recall: { mode: 'bogus' } }, {}).recall.mode, 'tool')
+  assert.equal(resolveConfig({ recall: { mode: 'bogus', enabled: false } }, {}).recall.mode, 'off')
+  assert.equal(resolveConfig({ recall: { mode: 'bogus', enabled: true } }, {}).recall.mode, 'auto')
+  // Legacy booleans: true -> auto (explicit opt-in), false -> off.
+  assert.equal(resolveConfig({ recall: { enabled: false } }, {}).recall.mode, 'off')
+  assert.equal(resolveConfig({ recall: { enabled: true } }, {}).recall.mode, 'auto')
+  // `enabled` stays derived from the mode for older readers.
+  assert.equal(resolveConfig({ recall: { mode: 'tool' } }, {}).recall.enabled, true)
+  assert.equal(resolveConfig({ recall: { mode: 'off' } }, {}).recall.enabled, false)
 })
 
 test('resolveConfig reads deployment coordinates from the environment', () => {
@@ -111,7 +137,7 @@ test('resolveConfig keeps explicit switches and clamps numbers', () => {
     {
       enabled: false,
       spaceId: '  sp-123  ',
-      recall: { enabled: false, topK: 999, minScore: 9, cacheMs: -1 },
+      recall: { enabled: false, topK: 999, minScore: 9, cacheMs: -1, timeoutMs: 1 },
       tools: { enabled: false },
       capture: { enabled: true, maxMessages: 0 },
     },
@@ -123,6 +149,7 @@ test('resolveConfig keeps explicit switches and clamps numbers', () => {
   assert.equal(config.recall.topK, 50)
   assert.equal(config.recall.minScore, 1)
   assert.equal(config.recall.cacheMs, 0)
+  assert.equal(config.recall.timeoutMs, 100)
   assert.equal(config.tools.enabled, false)
   assert.equal(config.capture.enabled, true)
   assert.equal(config.capture.maxMessages, 1)
@@ -156,6 +183,8 @@ test('describeSwitches lists all four switches', () => {
   assert.match(text, /tools on/)
   assert.match(text, /recall off/)
   assert.match(text, /capture off/)
+  assert.match(describeSwitches(resolveConfig({ recall: { mode: 'tool' } }, {})), /recall tool/)
+  assert.match(describeSwitches(resolveConfig({ recall: { mode: 'off' } }, {})), /recall off/)
 })
 
 test('strategy types match the backend vocabulary', () => {

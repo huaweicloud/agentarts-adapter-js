@@ -172,7 +172,7 @@ export class MemoryGateway {
    *
    * @param {string} method - HTTP method
    * @param {string} path - path beginning with `/`
-   * @param {{body?: unknown, signal?: AbortSignal, label: string}} options
+   * @param {{body?: unknown, signal?: AbortSignal, label: string, timeoutMs?: number}} options
    * @returns {Promise<any>} parsed JSON body, `{}` for 204, or `{response}` for non-JSON
    */
   async request(method, path, options) {
@@ -181,7 +181,8 @@ export class MemoryGateway {
     }
 
     const url = `${this.baseUrl}${path}`
-    const timeout = AbortSignal.timeout(this.#config.timeoutMs)
+    const timeoutMs = options.timeoutMs ?? this.#config.timeoutMs
+    const timeout = AbortSignal.timeout(timeoutMs)
     const signal =
       options.signal === undefined ? timeout : AbortSignal.any([options.signal, timeout])
 
@@ -198,7 +199,7 @@ export class MemoryGateway {
       })
     } catch (error) {
       if (error?.name === 'TimeoutError') {
-        throw new GatewayError('timeout', `${options.label} exceeded ${this.#config.timeoutMs}ms`)
+        throw new GatewayError('timeout', `${options.label} exceeded ${timeoutMs}ms`)
       }
       if (error?.name === 'AbortError') {
         throw new GatewayError('aborted', `${options.label} aborted`)
@@ -243,7 +244,7 @@ export class MemoryGateway {
    * Semantic search over the space.
    *
    * @param {string} query - natural language query
-   * @param {{topK?: number, minScore?: number, strategyType?: string, signal?: AbortSignal}} [options]
+   * @param {{topK?: number, minScore?: number, strategyType?: string, signal?: AbortSignal, timeoutMs?: number}} [options]
    * @returns {Promise<MemoryHit[]>}
    */
   async search(query, options = {}) {
@@ -260,6 +261,8 @@ export class MemoryGateway {
       body,
       signal: options.signal,
       label: 'memory search',
+      // Recall must not hold a turn hostage; writes keep the longer default.
+      timeoutMs: options.timeoutMs ?? this.#config.recall.timeoutMs,
     })
     return normalizeSearchResponse(payload)
   }

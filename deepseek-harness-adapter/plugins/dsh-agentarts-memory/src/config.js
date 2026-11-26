@@ -28,6 +28,16 @@
 /** Builtin memory strategies accepted by the AgentArts memory backend. */
 export const STRATEGY_TYPES = ['semantic', 'episodic', 'user_preference', 'summary', 'procedural']
 
+/**
+ * How recall participates in a turn.
+ *
+ * - `auto`: search before each turn's first step and prepend the best hits.
+ * - `tool`: no injection; the model is told the memory exists and decides
+ *   whether to call `huawei_memory_search`.
+ * - `off`: no injection and no hint; the tools stay available if enabled.
+ */
+export const RECALL_MODES = ['auto', 'tool', 'off']
+
 /** Environment variable the AgentArts Memory data plane uses for its API key. */
 export const DEFAULT_API_KEY_ENV = 'HUAWEICLOUD_SDK_MEMORY_API_KEY'
 
@@ -117,6 +127,20 @@ export function resolveConfig(raw, env = process.env) {
   const tools = r.tools !== null && typeof r.tools === 'object' ? r.tools : {}
   const capture = r.capture !== null && typeof r.capture === 'object' ? r.capture : {}
 
+  // `recall.mode` is the switch. With no mode set the default is `tool`: no
+  // injection, and the model decides whether to search. The older boolean still
+  // works: `enabled: true` means `auto`, `enabled: false` means `off`. An
+  // unknown mode string falls back the same way as "no mode set".
+  const modeRaw = asString(recall.mode).toLowerCase()
+  const legacyEnabled = typeof recall.enabled === 'boolean' ? recall.enabled : undefined
+  const recallMode = RECALL_MODES.includes(modeRaw)
+    ? modeRaw
+    : legacyEnabled === undefined
+      ? 'tool'
+      : legacyEnabled
+        ? 'auto'
+        : 'off'
+
   return {
     enabled: asBool(r.enabled, true),
     spaceId: asString(env[ENV_SPACE_ID]) || asString(r.spaceId),
@@ -132,7 +156,11 @@ export function resolveConfig(raw, env = process.env) {
     timeoutMs: asNumber(r.timeoutMs, 5000, { min: 100, max: 120000 }),
     rerank: resolveRerank(env, asBool(r.rerank, true)),
     recall: {
-      enabled: asBool(recall.enabled, true),
+      mode: recallMode,
+      enabled: recallMode !== 'off',
+      // Recall sits on the critical path of a turn, so it gets its own short
+      // deadline instead of the write/capture timeout.
+      timeoutMs: Math.round(asNumber(recall.timeoutMs, 1000, { min: 100, max: 120000 })),
       topK: Math.round(asNumber(recall.topK, 5, { min: 1, max: 50 })),
       minScore: asNumber(recall.minScore, 0.35, { min: 0, max: 1 }),
       maxInjectTokens: Math.round(asNumber(recall.maxInjectTokens, 600, { min: 50, max: 8000 })),
@@ -178,7 +206,7 @@ export function describeSwitches(config) {
   return [
     `plugin ${flag(config.enabled)}`,
     `tools ${flag(config.tools.enabled)}`,
-    `recall ${flag(config.recall.enabled)}`,
+    `recall ${config.recall.mode}`,
     `capture ${flag(config.capture.enabled)}`,
   ].join(' · ')
 }

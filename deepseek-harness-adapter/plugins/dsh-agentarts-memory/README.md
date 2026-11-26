@@ -1,21 +1,36 @@
 # AgentArts memory
 
 Adds Huawei Cloud **AgentArts Memory** to DeepSeek Harness: a shared, cross-session
-long-term memory behind a semantic search API. Four independent switches, no npm
-dependencies, no build step.
+long-term memory behind a semantic search API. No npm dependencies, no build
+step. Recall has three modes (automatic, model-driven, off) and defaults to
+model-driven (`tool`): no injection, and the agent decides when to search, so
+the blocking round trip only happens when it is actually needed.
 
-## What it does
+## What it can do
 
 | Capability | Switch | Behaviour |
 | --- | --- | --- |
 | Whole plugin | `enabled` | `false` registers nothing at all — identical to not having the plugin |
 | Tools | `tools.enabled` | `huawei_memory_search` and `huawei_memory_save` |
-| Recall | `recall.enabled` | before each agent step, search with the incoming user text and prepend the best hits |
+| Recall | `recall.mode` | Default `tool`: inject nothing, but tell the agent the memory exists so it can decide. `auto`: also search before each turn's first step and prepend the best hits. `off`: no recall and no hint |
 | Capture | `capture.enabled` | after a session ends, push its dialogue turns so the platform extracts memories |
 
 `recall` and `capture` are best-effort by construction: every failure path returns
 `next()` (recall) or logs a warning (capture), so a cloud outage cannot break a
-conversation.
+conversation. Recall uses its own short deadline (`recall.timeoutMs`, default
+1000ms) because it sits in front of the model; writes keep `timeoutMs` (5000ms).
+
+## What it cannot do
+
+- **No citation.** A recalled item is the platform's distilled summary; the
+  original events behind it are not returned.
+- **No control over merge/dedup.** That is the platform extraction strategy.
+- **No delete tool.** The data plane supports deleting a memory, but it is not
+  exposed as a model tool.
+- **Not a live data source.** It recalls distilled facts, not current data.
+
+Run `/agentarts help` in a session to see this list rendered with the current
+switches.
 
 ## Requirements
 
@@ -75,7 +90,8 @@ environment variables (environment wins whenever it is set):
     timeoutMs: 5000
     rerank: true                 # fallback; prefer $AGENTARTS_MEMORY_RERANK
     recall:
-      enabled: true
+      mode: tool                 # auto | tool | off (legacy: enabled: true == auto, false == off)
+      timeoutMs: 1000            # search deadline in front of the model
       topK: 5
       minScore: 0.35
       maxInjectTokens: 600
@@ -95,6 +111,7 @@ plugin without touching this page.
 
 ```
 /agentarts                 # switch status, space, readiness
+/agentarts help            # what this plugin can and cannot do
 /agentarts search 数据库    # ad-hoc semantic search
 ```
 

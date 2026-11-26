@@ -260,14 +260,17 @@ test('an HTTP error surfaces the backend error_code', async () => {
   }
 })
 
-test('a slow backend hits the deadline', async () => {
+test('a slow search hits the short recall deadline, not the write deadline', async () => {
   const stub = await startStub({ delayMs: 300 })
   try {
-    await assert.rejects(gatewayFor(stub.url, { timeoutMs: 100 }).search('q'), (error) => {
+    await assert.rejects(gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).search('q'), (error) => {
       assert.equal(error.code, 'timeout')
       assert.match(error.message, /exceeded 100ms/)
       return true
     })
+    // Same config, but a write uses timeoutMs (5000 by default) and completes.
+    const saved = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).save({ content: 'x' })
+    assert.equal(saved.content, 'x')
   } finally {
     await stub.close()
   }

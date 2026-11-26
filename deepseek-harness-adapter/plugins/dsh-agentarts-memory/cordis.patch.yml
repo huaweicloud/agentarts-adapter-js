@@ -16,7 +16,9 @@
 #
 #   enabled: false          -> the whole plugin is inert (no tools, no hooks)
 #   tools.enabled: false    -> no huawei_memory_* tools
-#   recall.enabled: false   -> no automatic recall injection
+#   recall.mode: tool       -> default: no injection; the model decides when to search
+#   recall.mode: auto       -> automatic recall injection before each turn
+#   recall.mode: off        -> no recall (tools stay available if enabled)
 #   capture.enabled: false  -> no transcript push after a session ends
 #
 # You can also flip the single row off in Plugins instead of editing this file.
@@ -36,7 +38,8 @@
         timeoutMs: 5000
         rerank: true                 # fallback: $AGENTARTS_MEMORY_RERANK
         recall:
-          enabled: true
+          mode: tool                 # auto | tool | off (default: tool)
+          timeoutMs: 1000            # search deadline in front of the model
           topK: 5
           minScore: 0.35
           maxInjectTokens: 600
