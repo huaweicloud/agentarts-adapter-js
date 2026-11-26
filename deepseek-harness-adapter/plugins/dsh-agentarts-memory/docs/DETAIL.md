@@ -10,7 +10,6 @@ plugin installs from the repository with no build step and no dependency:
 | Purpose | Method + path |
 | --- | --- |
 | semantic search | `POST /v1/core/spaces/{space_id}/memories/search` |
-| create a memory record | `POST /v1/core/spaces/{space_id}/memories` |
 | delete a memory record | `DELETE /v1/core/spaces/{space_id}/memories/{memory_id}` |
 | create a session | `POST /v1/core/spaces/{space_id}/sessions` |
 | append messages | `POST /v1/core/spaces/{space_id}/sessions/{session_id}/messages` |
@@ -45,8 +44,11 @@ installed but completely out of the way.
 
 - `huawei_memory_search(query, top_k?, strategy_type?)` — semantic search, returns
   scored memory texts.
-- `huawei_memory_save(content, strategy_type?)` — writes one memory record
-  directly, bypassing server-side extraction. Defaults to `user_preference`.
+- `huawei_memory_save(content)` — adds one user message to the current session
+  (short-term memory) with `is_force_extract: true`, so the platform's strategies
+  extract the long-term record. Extraction is asynchronous, so the fact may not
+  be searchable immediately. This path deliberately does not create a long-term
+  record directly: merge/dedup policy belongs to the space strategies.
 
 Both tools also require a configured space and API key; without them the plugin
 stays mounted but registers no tools, and the plugin log states why.
@@ -73,7 +75,9 @@ still governs writes and capture. Either failure path degrades silently.
 **`capture.enabled`** (default `false`) — on `session/disposed` the dialogue turns
 of the session are pushed with `is_force_extract: true`, using the DSH session id
 both as the cloud session id and as the idempotency key. Tool calls and tool
-results are not uploaded.
+results are not uploaded. Messages are the short-term store (`message_ttl_hours`,
+7 days by default); long-term memory is always produced by platform extraction,
+never written directly by this plugin.
 
 ## Known limitations
 
@@ -85,9 +89,9 @@ results are not uploaded.
 - **No metadata round-trip.** `MemorySearchResponse` returns `content` and
   `score`; a record's `metadata` is not returned, so nothing is mapped back to
   local state.
-- **`strategyId` may be required** by the backend when creating records directly.
-  Leave it empty first; if the backend rejects the write, copy the strategy id
-  from the memory space configuration into `strategyId`.
+- **Saving is asynchronous.** `huawei_memory_save` writes short-term memory; the
+  long-term record appears only after the platform extraction pass, so an
+  immediate search may miss it.
 - **The recall injection path is not exercised without credentials.** Its pure
   helpers (query extraction, budget, rendering, message construction) are covered
   by unit tests; the live `agent/pre-step` round-trip needs a configured space.

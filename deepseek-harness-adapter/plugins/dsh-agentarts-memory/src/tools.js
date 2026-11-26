@@ -11,6 +11,8 @@
  * @module dsh-agentarts-memory/tools
  */
 
+import { randomUUID } from 'node:crypto'
+
 import { GatewayError } from './gateway.js'
 
 /**
@@ -33,7 +35,7 @@ function own(ctx, register) {
 /** Tool guidance appended to the system prompt when the tools are on. */
 export const TOOLS_PROMPT = [
   'huawei_memory_search searches a shared cloud long-term memory (Huawei Cloud AgentArts) by meaning;',
-  'huawei_memory_save writes one durable fact to that same memory so future sessions can find it.',
+  'huawei_memory_save queues one durable fact as short-term memory so the platform can extract it into the long-term memory asynchronously.',
   'Search before asking the user to repeat context. Save only durable facts the user would want remembered',
   '(preferences, project decisions, corrections) — never one-off requests, secrets or credentials.',
 ].join(' ')
@@ -127,7 +129,10 @@ export function applyTools(ctx, gateway, config) {
       const strategyType = typeof raw.strategy_type === 'string' ? raw.strategy_type : undefined
 
       try {
-        const hits = await gateway.search(query, { topK, strategyType })
+        // Explicit searches are allowed the operator timeout: the short recall
+        // deadline exists to protect an automatic step, not a call the model
+        // (or the operator) decided to make.
+        const hits = await gateway.search(query, { topK, strategyType, timeoutMs: config.timeoutMs })
         return {
           total: hits.length,
           results: hits.map((hit) => ({
@@ -146,7 +151,7 @@ export function applyTools(ctx, gateway, config) {
   own(ctx, () => ctx.tools.register({
     name: 'huawei_memory_save',
     description:
-      'Save one durable fact to the shared cloud long-term memory (Huawei Cloud AgentArts) so later sessions can recall it. Use for stable preferences, project decisions and corrections only.',
+      'Queue one durable fact as short-term memory in this session. The memory platform extracts long-term memories from it according to the space strategies; extraction is asynchronous, so the fact may not be searchable immediately. Use for stable preferences, project decisions and corrections only.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -156,35 +161,46 @@ export function applyTools(ctx, gateway, config) {
           type: 'string',
           description: 'The fact to remember, as one or two self-contained sentences.',
         },
-        strategy_type: {
-          type: 'string',
-          description: 'Memory type: user_preference (default), semantic, episodic, summary or procedural.',
-        },
       },
     },
     output: {
       schema: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'content'],
+        required: ['session_id', 'messages', 'content'],
         properties: {
-          id: { type: 'string', required: true },
+          session_id: { type: 'string', required: true },
+          messages: { type: 'integer', required: true },
           content: { type: 'string', required: true },
         },
       },
       render(_args, value) {
-        const id = value?.id === '' ? '(no id returned)' : value?.id
-        return [{ type: 'text', text: `Saved to cloud memory ${id}: ${value?.content ?? ''}` }]
+        return [
+          {
+            type: 'text',
+            text: `Queued for memory extraction in session ${value?.session_id ?? '(none)'} (${value?.messages ?? 0} message(s)): ${value?.content ?? ''}`,
+          },
+        ]
       },
     },
-    async execute(args) {
+    async execute(args, exec) {
       const raw = args !== null && typeof args === 'object' ? args : {}
       const content = String(raw.content ?? '').trim()
       if (content === '') throw new Error('content must not be empty')
-      const strategyType = typeof raw.strategy_type === 'string' ? raw.strategy_type : 'user_preference'
+
+      const sessionId = exec?.agent?.session?.id
+      if (sessionId === undefined || String(sessionId) === '') {
+        throw new Error('huawei_memory_save needs an active session')
+      }
 
       try {
-        return await gateway.save({ content, strategyType })
+        // Short-term memory is the session message stream; the platform turns it
+        // into long-term records. The idempotency key is per call so repeated
+        // saves in one session are all accepted.
+        const pushed = await gateway.pushMessages(String(sessionId), [{ role: 'user', content }], {
+          idempotencyKey: `save-${randomUUID()}`,
+        })
+        return { session_id: String(sessionId), messages: pushed, content }
       } catch (error) {
         throw toolFailure(error)
       }

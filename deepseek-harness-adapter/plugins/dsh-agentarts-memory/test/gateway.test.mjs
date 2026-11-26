@@ -174,24 +174,6 @@ test('search sends the Bearer header and the expected body', async () => {
   }
 })
 
-test('save posts a memory record and returns its id', async () => {
-  const stub = await startStub({ body: { id: 'new-1', content: 'saved text' } })
-  try {
-    const saved = await gatewayFor(stub.url).save({ content: 'saved text', strategyType: 'semantic' })
-    assert.deepEqual(saved, { id: 'new-1', content: 'saved text' })
-
-    const [request] = stub.requests
-    assert.equal(request.url, '/v1/core/spaces/space-1/memories')
-    assert.equal(request.body.content, 'saved text')
-    assert.equal(request.body.strategy_type, 'semantic')
-    assert.equal(request.body.actor_id, 'dsh-user')
-    // strategy_id is only sent when configured.
-    assert.ok(!('strategy_id' in request.body))
-  } finally {
-    await stub.close()
-  }
-})
-
 test('remove issues a DELETE on the record path', async () => {
   const stub = await startStub({ status: 204 })
   try {
@@ -269,8 +251,14 @@ test('a slow search hits the short recall deadline, not the write deadline', asy
       return true
     })
     // Same config, but a write uses timeoutMs (5000 by default) and completes.
-    const saved = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).save({ content: 'x' })
-    assert.equal(saved.content, 'x')
+    const accepted = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).pushMessages(
+      'session-1',
+      [{ role: 'user', content: 'x' }],
+    )
+    assert.equal(accepted, 1)
+    // An explicit search can override the short recall deadline.
+    const hits = await gatewayFor(stub.url, { recall: { timeoutMs: 100 } }).search('q', { timeoutMs: 5000 })
+    assert.equal(hits.length, 1)
   } finally {
     await stub.close()
   }

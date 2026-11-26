@@ -33,8 +33,6 @@
         endpoint: ''                 # fallback: $AGENTARTS_MEMORY_DATA_ENDPOINT
         actorId: ''                  # fallback: $AGENTARTS_MEMORY_USER_ID (default dsh-user)
         assistantId: dsh
-        strategyId: ''
-        strategyType: semantic
         timeoutMs: 5000
         rerank: true                 # fallback: $AGENTARTS_MEMORY_RERANK
         recall:

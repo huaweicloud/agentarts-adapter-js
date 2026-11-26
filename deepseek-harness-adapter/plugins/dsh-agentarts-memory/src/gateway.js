@@ -16,7 +16,6 @@
  * | call | request |
  * | --- | --- |
  * | search | `POST /v1/core/spaces/{space_id}/memories/search` |
- * | save | `POST /v1/core/spaces/{space_id}/memories` |
  * | remove | `DELETE /v1/core/spaces/{space_id}/memories/{memory_id}` |
  * | session | `POST /v1/core/spaces/{space_id}/sessions` |
  * | messages | `POST /v1/core/spaces/{space_id}/sessions/{session_id}/messages` |
@@ -268,33 +267,6 @@ export class MemoryGateway {
   }
 
   /**
-   * Write one memory record directly (no server-side extraction involved).
-   *
-   * @param {{content: string, strategyType?: string, metadata?: Record<string, unknown>}} input
-   * @returns {Promise<{id: string, content: string}>}
-   */
-  async save(input) {
-    const content = String(input?.content ?? '').trim()
-    if (content === '') throw new GatewayError('http', 'content must not be empty')
-
-    /** @type {Record<string, unknown>} */
-    const body = {
-      content,
-      strategy_type: input?.strategyType ?? this.#config.strategyType,
-    }
-    if (this.#config.strategyId !== '') body.strategy_id = this.#config.strategyId
-    if (this.#config.actorId !== '') body.actor_id = this.#config.actorId
-    if (this.#config.assistantId !== '') body.assistant_id = this.#config.assistantId
-    if (input?.metadata !== undefined) body.metadata = input.metadata
-
-    const created = await this.request('POST', `${this.#spacePath()}/memories`, {
-      body,
-      label: 'memory save',
-    })
-    return { id: String(created?.id ?? ''), content: String(created?.content ?? content) }
-  }
-
-  /**
    * Delete one memory record.
    *
    * @param {string} id - cloud memory record id
@@ -311,9 +283,10 @@ export class MemoryGateway {
    *
    * @param {string} sessionId - DSH session id, reused as the cloud session id
    * @param {Array<{role: string, content: string}>} messages - plain text turns
+   * @param {{idempotencyKey?: string}} [options] - per-batch key; defaults to the session id
    * @returns {Promise<number>} number of messages accepted
    */
-  async pushMessages(sessionId, messages) {
+  async pushMessages(sessionId, messages, options = {}) {
     const id = String(sessionId ?? '').trim()
     if (id === '') throw new GatewayError('http', 'session id must not be empty')
     if (!Array.isArray(messages) || messages.length === 0) return 0
@@ -342,7 +315,7 @@ export class MemoryGateway {
           parts: [{ type: 'text', text: message.content }],
         })),
         is_force_extract: true,
-        idempotency_key: id,
+        idempotency_key: options.idempotencyKey ?? id,
       },
       label: 'memory message push',
     })

@@ -208,6 +208,57 @@ test('recall injects a memory returned by the stub data plane', async () => {
   }
 })
 
+test('a hit dropped by the token budget is still eligible in a later step', async () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  const longHits = [0, 1, 2].map((i) => ({
+    record: { id: `m-${i}`, content: `long-${i}-` + 'x'.repeat(900), strategy_type: 'semantic' },
+    score: 0.9 - i * 0.1,
+  }))
+  const stub = await startStub({ body: { records: longHits } })
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED(stub.url, {
+      recall: {
+        mode: 'auto',
+        minQueryChars: 1,
+        minScore: 0,
+        maxInjectTokens: 600,
+        cacheMs: 0,
+      },
+      tools: { enabled: false },
+    }))
+
+    const preStep = log.listeners.find((listener) => listener.name === 'agent/pre-step')
+    const next = async () => ({ kind: 'enter', messages: 'NEXT' })
+    const agent = { id: 'agent-budget' }
+
+    const first = await preStep.handler({ agent, messages: [userMessage('first question')] }, next)
+    assert.match(first.messages[0].content[0].text, /long-0/)
+    assert.doesNotMatch(first.messages[0].content[0].text, /long-1/)
+
+    const second = await preStep.handler({ agent, messages: [userMessage('second question')] }, next)
+    assert.match(second.messages[0].content[0].text, /long-1/, 'truncated hit must be injected once it fits')
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+    await stub.close()
+  }
+})
+
+test('unloading the plugin runs every disposer without throwing', () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED('http://127.0.0.1:1'))
+    // The old code registered a disposer that called gateway.close(), which
+    // does not exist; invoking it threw and broke unwinding.
+    for (const dispose of log.effects) {
+      assert.doesNotThrow(() => dispose())
+    }
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+  }
+})
+
 test('recall degrades to next() when the data plane errors', async () => {
   process.env.STUB_MEMORY_KEY = 'stub-key'
   const stub = await startStub({ status: 500, body: { error_code: 'BOOM', error_msg: 'exploded' } })
@@ -266,6 +317,62 @@ test('the tools are registered and render hits', async () => {
     const blocks = search.output.render({ query: 'typescript' }, value)
     assert.equal(blocks[0].type, 'text')
     assert.match(blocks[0].text, /0\.77/)
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+    await stub.close()
+  }
+})
+
+test('huawei_memory_save queues a short-term message instead of a long-term record', async () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  const stub = await startStub()
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED(stub.url, { recall: { mode: 'off' }, tools: { enabled: true } }))
+
+    const save = log.tools.find((tool) => tool.name === 'huawei_memory_save')
+    await assert.rejects(save.execute({ content: 'x' }), /active session/)
+
+    const value = await save.execute(
+      { content: '用户偏好 TypeScript 做新项目' },
+      { agent: { session: { id: 'session-42' } } },
+    )
+    assert.deepEqual(value, {
+      session_id: 'session-42',
+      messages: 1,
+      content: '用户偏好 TypeScript 做新项目',
+    })
+
+    // Session create plus message push; the platform extracts long-term memory.
+    assert.equal(stub.requests.length, 2)
+    assert.equal(stub.requests[0].url, '/v1/core/spaces/space-1/sessions')
+    assert.equal(stub.requests[1].url, '/v1/core/spaces/space-1/sessions/session-42/messages')
+    assert.deepEqual(stub.requests[1].body.messages, [
+      { role: 'user', parts: [{ type: 'text', text: '用户偏好 TypeScript 做新项目' }] },
+    ])
+    assert.equal(stub.requests[1].body.is_force_extract, true)
+    assert.match(stub.requests[1].body.idempotency_key, /^save-/)
+    assert.ok(stub.requests.every((request) => !request.url.endsWith('/memories')))
+  } finally {
+    delete process.env.STUB_MEMORY_KEY
+    await stub.close()
+  }
+})
+
+test('an explicit tool search uses the operator timeout, not the recall deadline', async () => {
+  process.env.STUB_MEMORY_KEY = 'stub-key'
+  const stub = await startStub({ delayMs: 300 })
+  try {
+    const { ctx, log } = makeCtx()
+    apply(ctx, CONFIGURED(stub.url, {
+      timeoutMs: 5000,
+      recall: { mode: 'off', timeoutMs: 100 },
+      tools: { enabled: true },
+    }))
+
+    const search = log.tools.find((tool) => tool.name === 'huawei_memory_search')
+    const value = await search.execute({ query: 'q' })
+    assert.equal(value.total, 1)
   } finally {
     delete process.env.STUB_MEMORY_KEY
     await stub.close()
