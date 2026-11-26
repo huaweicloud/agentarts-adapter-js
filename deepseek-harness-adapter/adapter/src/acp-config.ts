@@ -1,4 +1,4 @@
-import { loadConfig, type RuntimeConfig } from '@agentarts/harness-dsh-runtime'
+import { loadConfig, parseAcpChildEnv, type RuntimeConfig } from '@agentarts/harness-dsh-runtime'
 import { buildChildEnv, loadAdapterConfig } from './config.js'
 import { resolveCredentials, resolveRegion, SdkCredentialProvider, type CredentialProvider } from './credential.js'
 
@@ -10,6 +10,7 @@ export async function loadHostedDshConfig(
     const configFile = env.AGENTRUN_CONFIG_FILE || env.AGENT_METADATA_FILE
     if (!configFile && !env.agent_metadata && !env.AGENT_METADATA) return loadConfig(env)
 
+    const childEnvOverrides = parseAcpChildEnv(env.DSH_ACP_CHILD_ENV)
     const config = loadAdapterConfig({ env })
     if (config.allowedTools !== null) {
         throw new Error('agent_metadata.allowed_tools requires a supported DSH tool policy')
@@ -37,7 +38,7 @@ export async function loadHostedDshConfig(
         DSH_ACP_MODEL: env.DSH_ACP_MODEL || modelName,
         DSH_AGENT_CWD: env.DSH_AGENT_CWD || env.DSH_ACP_CWD || env.AGENTRUN_DSH_CWD,
         DSH_SYSTEM_PROMPT: env.DSH_SYSTEM_PROMPT || config.systemPrompt,
-        DSH_ACP_CHILD_ENV: JSON.stringify({ ...childEnv, ...JSON.parse(env.DSH_ACP_CHILD_ENV || '{}') }),
+        DSH_ACP_CHILD_ENV: JSON.stringify({ ...childEnv, ...childEnvOverrides }),
         AGENTRUN_ACP_MCP_SERVERS: env.AGENTRUN_ACP_MCP_SERVERS || JSON.stringify(deployedServers),
     })
 }

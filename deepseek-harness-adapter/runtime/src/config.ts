@@ -41,18 +41,29 @@ export function splitArgs(text: string): string[] {
     return result
 }
 
-function jsonObject(value: string | undefined): Record<string, string> {
+function jsonObject(value: string | undefined, variable?: string): Record<string, string> {
     if (value === undefined || value === '') return {}
+    let parsed: unknown
     try {
-        const parsed = JSON.parse(value) as Record<string, unknown>
-        const result: Record<string, string> = {}
-        for (const [key, item] of Object.entries(parsed)) {
-            if (typeof item === 'string') result[key] = item
-        }
-        return result
+        parsed = JSON.parse(value)
     } catch {
+        if (variable) throw new Error(`${variable} is not valid JSON`)
         return {}
     }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        if (variable) throw new Error(`${variable} must be a JSON object`)
+        return {}
+    }
+
+    const result: Record<string, string> = {}
+    for (const [key, item] of Object.entries(parsed)) {
+        if (typeof item === 'string') result[key] = item
+    }
+    return result
+}
+
+export function parseAcpChildEnv(value: string | undefined): Record<string, string> {
+    return jsonObject(value, 'DSH_ACP_CHILD_ENV')
 }
 
 function parseDeployedMcpServers(value: string | undefined) {
@@ -82,7 +93,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     const acpEnv = childEnvironment(env)
     if (!acpEnv.DEEPSEEK_API_KEY && model?.api_key) acpEnv.DEEPSEEK_API_KEY = model.api_key
     if (!acpEnv.DEEPSEEK_BASE_URL && model?.base_url) acpEnv.DEEPSEEK_BASE_URL = model.base_url
-    Object.assign(acpEnv, jsonObject(stringEnv(env, 'DSH_ACP_CHILD_ENV')))
+    Object.assign(acpEnv, parseAcpChildEnv(env.DSH_ACP_CHILD_ENV))
     if (!acpEnv.DEEPSEEK_API_KEY && model?.credential_provider_name)
         throw new Error('model_config.credential_provider_name requires a resolved model credential')
 

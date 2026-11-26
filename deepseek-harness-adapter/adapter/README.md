@@ -40,7 +40,7 @@ HTTP 或 WS 携带 `eventId` 时，adapter 对同一 sessionId 和 eventId 做�
 
 配置可由 `agent_metadata`、`AGENT_METADATA`、`AGENT_METADATA_FILE` 或 `AGENTRUN_CONFIG_FILE` 提供，支持直接对象或 `agent_metadata` 包装。默认 ACP 入口读取模型、system prompt、多个 MCP gateway、记忆和技能配置，并通过 SDK Identity 解析缺失的模型、记忆和 MCP key。显式 `DSH_ACP_MODEL_PROVIDER` 会限定模型路由。默认优先匹配 ACP profile 提供的 `agentarts-model`。
 
-创建会话时合并请求级 MCP、单网关配置和部署级 MCP。部署级 MCP 优先于同名请求配置，请求改用其他网关目标时使用请求自身凭据。子进程仅接收部署白名单和 `DSH_ACP_CHILD_ENV` 的显式覆盖，OBS 使用仅含 skills 和 user_bucket 的 metadata。
+创建会话时合并请求级 MCP、单网关配置和部署级 MCP。部署级 MCP 优先于同名请求配置，请求改用其他网关目标时使用请求自身凭据。子进程仅接收部署白名单和 `DSH_ACP_CHILD_ENV` 的显式覆盖，OBS 使用仅含 skills 和 user_bucket 的 metadata。`DSH_ACP_CHILD_ENV` 接受 JSON 对象中的字符串值，JSON 格式错误时启动会报告该变量名。
 
 使用记忆和 OBS 技能前按 [ACP 集成说明](../docs/ACP-INTEGRATION.md) 生成部署 profile。`memory_config.memory_user_id` 可指定记忆 actor，`AGENTARTS_MEMORY_USER_ID` 可以覆盖它。包含 `allowed_tools` 列表的部署会收到配置错误，直到 ACP 执行层可以强制应用工具白名单。
 

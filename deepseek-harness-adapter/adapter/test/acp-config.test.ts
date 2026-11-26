@@ -54,3 +54,12 @@ it('keeps explicit model selection and refuses tool policies ACP cannot enforce'
     await expect(loadHostedDshConfig({ agent_metadata: '{"allowed_tools":["read"]}' }, provider))
         .rejects.toThrow('requires a supported DSH tool policy')
 })
+
+it('identifies malformed ACP child env before resolving hosted credentials', async () => {
+    const resolveApiKey = vi.fn()
+    await expect(loadHostedDshConfig({
+        DSH_ACP_CHILD_ENV: '{"token":"example-value',
+        agent_metadata: '{"model_config":{"credential_provider_name":"model-provider"}}',
+    }, { resolveApiKey })).rejects.toThrow(/^DSH_ACP_CHILD_ENV is not valid JSON$/)
+    expect(resolveApiKey).not.toHaveBeenCalled()
+})

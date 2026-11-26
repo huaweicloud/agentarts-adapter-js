@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { loadConfig } from '../src/config.js'
 
 describe('managed harness configuration', () => {
+    it.each([
+        ['{bad', 'DSH_ACP_CHILD_ENV is not valid JSON'],
+        ['["not-an-object"]', 'DSH_ACP_CHILD_ENV must be a JSON object'],
+    ])('reports an invalid ACP child environment override (%s)', (value, error) => {
+        expect(() => loadConfig({ DSH_ACP_CHILD_ENV: value })).toThrow(error)
+    })
+
     it('maps model and persona fields and keeps platform credentials out of the child', () => {
         const config = loadConfig({
             agent_metadata: JSON.stringify({ system_prompt: 'persona', model_config: { name: 'model',
