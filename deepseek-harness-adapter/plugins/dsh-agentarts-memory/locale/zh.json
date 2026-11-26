@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "AgentArts 记忆",
+    "description": "给 DSH 接入华为云 AgentArts 长期记忆：每步注入语义召回、提供记忆检索/写入工具，可选在会话结束后上传对话让平台提取。每一项能力都有独立开关。",
+    "detail": "docs/DETAIL.md"
+  }
+}
