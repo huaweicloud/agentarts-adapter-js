@@ -292,6 +292,11 @@ export class AcpRuntime {
 
         const client = await this.ensureClient()
         let mcpServers = normalizeMcpServers(request.mcpServers)
+        // Merge deployment-level mcpServers (agent_metadata.mcp_config supports multiple gateways).
+        const deployed = readDeployedMcpServers()
+        if (deployed.length > 0) {
+            mcpServers = mergeMcpServers(mcpServers, deployed)
+        }
         const gateway = await this.gateway.resolve(request.gateway ?? {})
         if (gateway !== null) {
             mcpServers = mergeMcpServers(mcpServers, [gateway.server])
@@ -737,3 +742,18 @@ function textOf(content: unknown): string {
 }
 
 export { normalizeSystemPromptMode }
+
+/**
+ * Read deployment-level MCP servers injected by the Adapter's agent_metadata translation
+ * layer (AGENTRUN_ACP_MCP_SERVERS). Supports multiple gateways; returns [] when unset.
+ */
+function readDeployedMcpServers(): AcpMcpServer[] {
+    const raw = process.env.AGENTRUN_ACP_MCP_SERVERS
+    if (raw === undefined || raw.trim() === '') return []
+    try {
+        const parsed = JSON.parse(raw) as unknown
+        return Array.isArray(parsed) ? (parsed as AcpMcpServer[]) : []
+    } catch {
+        return []
+    }
+}

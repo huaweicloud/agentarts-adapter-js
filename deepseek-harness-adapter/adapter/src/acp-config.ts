@@ -24,15 +24,19 @@ export function applyAgentMetadataToAcpEnv(
   // credentials carries the model/memory API keys resolved via the identity service.
   env['DSH_ACP_CHILD_ENV'] = JSON.stringify(buildChildEnv(config, env, credentials));
 
-  const [firstMcp] = config.mcps;
-  if (firstMcp !== undefined) {
-    env['DSH_AGENTARTS_GATEWAY_MCP_URL'] = firstMcp.endpoint;
-    env['DSH_AGENTARTS_GATEWAY_SERVER_NAME'] = firstMcp.serverName;
-    const headers = credentials?.mcpHeaders[firstMcp.serverName] ?? firstMcp.headers;
-    const authorization = headers['Authorization'] ?? headers['authorization'];
-    if (authorization !== undefined) {
-      env['DSH_AGENTARTS_GATEWAY_API_KEY'] = authorization.replace(/^Bearer\s+/i, '');
-    }
+  // All MCP gateways → ACP mcpServers (http type), merged into every session/new.
+  // Multiple gateways are supported: each entry of agent_metadata.mcp_config becomes one server.
+  const mcpServers = config.mcps.map((mcp) => {
+    const headers = credentials?.mcpHeaders[mcp.serverName] ?? mcp.headers;
+    return {
+      name: mcp.serverName,
+      type: 'http',
+      url: mcp.endpoint,
+      headers: Object.entries(headers).map(([name, value]) => ({ name, value })),
+    };
+  });
+  if (mcpServers.length > 0) {
+    env['AGENTRUN_ACP_MCP_SERVERS'] = JSON.stringify(mcpServers);
   }
 }
 
