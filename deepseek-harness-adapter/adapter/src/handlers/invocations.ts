@@ -15,14 +15,23 @@ export function createInvocationHandler(scheduler: Scheduler) {
         } catch (err) {
             return new JsonResponse({ statusCode: 400, content: { error: (err as Error).message } })
         }
-        const handle = await scheduler.run(req)
-        // 并发排空帧流：只要 final，但必须消费，否则整轮帧无界缓存
-        const drained = (async () => {
-            for await (const _frame of handle.frames) { /* 丢弃非 final 帧 */ }
-        })()
-        const outcome = await handle.outcome
-        await drained
         const headers = { [SESSION_HEADER]: req.sessionId }
+        let outcome
+        try {
+            const handle = await scheduler.run(req, context?.signal)
+            // 只返回 final，排空中间帧以释放帧缓冲。
+            const drained = (async () => {
+                for await (const _frame of handle.frames) { /* 排空中间帧 */ }
+            })()
+            const [result] = await Promise.all([handle.outcome, drained])
+            outcome = result
+        } catch (error) {
+            return new JsonResponse({
+                statusCode: 500,
+                content: { error: error instanceof Error ? error.message : String(error) },
+                headers,
+            })
+        }
         if (!outcome.ok || !outcome.final) {
             return new JsonResponse({
                 statusCode: 500,

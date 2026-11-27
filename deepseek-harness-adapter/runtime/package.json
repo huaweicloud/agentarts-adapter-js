@@ -19,11 +19,11 @@
         "start": "node dist/main.js"
     },
     "dependencies": {
-        "@huaweicloud/agentarts-sdk": "^0.0.1"
+        "@huaweicloud/agentarts-sdk": "0.0.7"
     },
     "devDependencies": {
         "typescript": "^5.6.0",
-        "vitest": "^3.0.0",
+        "vitest": "^4.1.11",
         "@vitest/coverage-v8": "^3.0.0",
         "@types/node": "^24.0.0"
     }

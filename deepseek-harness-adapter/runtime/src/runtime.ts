@@ -25,6 +25,23 @@ import type {
     TurnResult,
 } from './types.js'
 
+function cancelledBeforeStart(): RuntimeError {
+    return new RuntimeError('round cancelled before prompt', { code: 'cancelled', statusCode: 499 })
+}
+
+/** An aborted caller can leave shared setup running. No session/prompt RPC is detached. */
+async function waitForSetup<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return work
+    let abort!: () => void
+    const cancelled = new Promise<never>((_, reject) => {
+        abort = () => reject(cancelledBeforeStart())
+        signal.addEventListener('abort', abort, { once: true })
+        if (signal.aborted) abort()
+    })
+    try { return await Promise.race([work, cancelled]) }
+    finally { signal.removeEventListener('abort', abort) }
+}
+
 interface TextState {
     messageId: string
     token: boolean
@@ -44,7 +61,7 @@ export class AcpRuntime {
     private clientPromise: Promise<AcpClient> | null = null
     private readonly sessions = new Map<string, SessionEntry>()
     private readonly byAcp = new Map<string, SessionEntry>()
-    private readonly queues = new Map<string, Promise<void>>()
+    private readonly queues = new Map<string, Set<() => void>>()
     private readonly runnerDir: string
     private readonly promptStore: SystemPromptStore
     private readonly gateway: GatewayResolver
@@ -58,6 +75,10 @@ export class AcpRuntime {
         this.gateway = new GatewayResolver(config.gateway)
         this.permissionBroker = new PermissionBroker(config.permission)
     }
+
+    private initialized = false
+
+    get ready(): boolean { return this.initialized && this.client?.running === true }
 
     get sessionsCount(): number {
         return this.sessions.size
@@ -81,17 +102,18 @@ export class AcpRuntime {
         const entry = this.sessions.get(key)
         if (entry === undefined) return false
         entry.current?.cancel()
-        const client = await this.ensureClient()
-        try {
-            await client.closeSession(entry.acpSessionId)
-        } catch {
-            // The child may have restarted; removing the in-memory mapping is
-            // still the useful outcome.
-        }
-        this.sessions.delete(key)
-        this.byAcp.delete(entry.acpSessionId)
-        this.promptStore.remove(entry.acpSessionId)
+        await this.retireSession(entry, await this.ensureClient())
         return true
+    }
+
+    async retireSession(entry: SessionEntry, client: AcpClient): Promise<void> {
+        entry.quarantined = true
+        await client.closeSession(entry.acpSessionId)
+        if (this.sessions.get(entry.key) === entry) {
+            this.sessions.delete(entry.key)
+            this.byAcp.delete(entry.acpSessionId)
+            this.promptStore.remove(entry.acpSessionId)
+        }
     }
 
     /** Cancel the in-flight turn of a runtime session. */
@@ -144,10 +166,20 @@ export class AcpRuntime {
         }
         const release = await this.acquire(request.sessionId, signal)
         try {
+            const checkCancelled = () => { if (signal?.aborted) throw cancelledBeforeStart() }
+            checkCancelled()
             const reused = this.sessions.has(request.sessionId)
-            const entry = await this.openSession(request)
+            const entry = await this.openSession(request, signal)
             const client = await this.ensureClient()
-            const queue = new AsyncQueue<RuntimeEvent>()
+            checkCancelled()
+            if (this.sessions.get(request.sessionId) !== entry || entry.quarantined) {
+                throw new RuntimeError('session closed during preparation', { code: 'session_unavailable', statusCode: 503 })
+            }
+            const queue = new AsyncQueue<RuntimeEvent>(request.stream !== false, event => ({
+                type: 'event_dropped',
+                eventType: event.type,
+                reason: 'event_exceeds_buffer_limit',
+            }))
             const permissionBroker =
                 request.permission === undefined
                     ? this.permissionBroker
@@ -166,7 +198,10 @@ export class AcpRuntime {
                 queue,
             })
             entry.current = run
+            const cancel = () => run.cancel()
+            signal?.addEventListener('abort', cancel, { once: true })
             const result = run.start().finally(() => {
+                signal?.removeEventListener('abort', cancel)
                 entry.lastUsedAt = Date.now()
                 entry.current = undefined
                 release()
@@ -205,30 +240,37 @@ export class AcpRuntime {
     }
 
     private async acquire(key: string, signal?: AbortSignal): Promise<() => void> {
-        const previous = this.queues.get(key) ?? Promise.resolve()
-        let release!: () => void
-        const gate = new Promise<void>((resolve) => {
-            release = resolve
-        })
-        const tail = previous.then(() => gate)
-        this.queues.set(key, tail)
-        if (signal?.aborted === true) {
-            release()
-            if (this.queues.get(key) === tail) this.queues.delete(key)
-            throw new RuntimeError('round cancelled before start', {
-                code: 'cancelled',
-                statusCode: 499,
+        if (signal?.aborted) throw cancelledBeforeStart()
+        let waiters = this.queues.get(key)
+        if (waiters === undefined) {
+            waiters = new Set()
+            this.queues.set(key, waiters)
+        } else {
+            const queue = waiters
+            await new Promise<void>((resolve, reject) => {
+                const cleanup = () => {
+                    queue.delete(admit)
+                    clearTimeout(timer)
+                    signal?.removeEventListener('abort', abort)
+                }
+                const admit = () => { cleanup(); resolve() }
+                const abort = () => { cleanup(); reject(cancelledBeforeStart()) }
+                const timer = setTimeout(() => {
+                    cleanup()
+                    reject(new RuntimeError('session queue timed out', { code: 'queue_timeout', statusCode: 503 }))
+                }, this.config.queueTimeoutMs)
+                queue.add(admit)
+                signal?.addEventListener('abort', abort, { once: true })
             })
         }
-        await previous
         return () => {
-            release()
-            if (this.queues.get(key) === tail) this.queues.delete(key)
+            const next = waiters.values().next().value
+            if (next) next()
+            else this.queues.delete(key)
         }
     }
 
     private async ensureClient(): Promise<AcpClient> {
-        if (this.client !== null && this.client.running) return this.client
         if (this.clientPromise !== null) return this.clientPromise
         if (this.disposed) {
             throw new RuntimeError('runtime is shutting down', {
@@ -255,6 +297,7 @@ export class AcpRuntime {
         client.onClosed(() => {
             // 旧 client 迟到的 close 不得清掉新 client 的会话与事件路由
             if (this.client !== client) return
+            this.initialized = false
             this.client = null
             this.clientPromise = null
             this.sessions.clear()
@@ -263,7 +306,9 @@ export class AcpRuntime {
         this.client = client
         this.clientPromise = (async () => {
             await client.start()
-            await client.initialize()
+            const hello = await client.initialize() as { protocolVersion?: number } | null
+            if (hello?.protocolVersion !== 1) throw new RuntimeError('ACP version 1 handshake required', { statusCode: 502 })
+            this.initialized = true
             return client
         })().catch(async (error) => {
             // 先等本次创建的 child 释放完，再允许新建 client；只清本次创建的引用
@@ -277,10 +322,13 @@ export class AcpRuntime {
         return this.clientPromise
     }
 
-    private async openSession(request: TurnRequest): Promise<SessionEntry> {
+    private async openSession(request: TurnRequest, signal?: AbortSignal): Promise<SessionEntry> {
         const existing = this.sessions.get(request.sessionId)
         const cwd = path.resolve(request.cwd ?? this.config.workspaceCwd)
         if (existing !== undefined) {
+            if (existing.quarantined) throw new RuntimeError('session cleanup required', {
+                code: 'session_unavailable', statusCode: 503,
+            })
             if (existing.cwd !== cwd) {
                 throw new RuntimeError('session cwd mismatch', {
                     code: 'session_cwd_mismatch',
@@ -290,18 +338,21 @@ export class AcpRuntime {
             return existing
         }
 
-        const client = await this.ensureClient()
-        let mcpServers = normalizeMcpServers(request.mcpServers)
-        // Merge deployment-level mcpServers (agent_metadata.mcp_config supports multiple gateways).
-        const deployed = readDeployedMcpServers()
-        if (deployed.length > 0) {
-            mcpServers = mergeMcpServers(mcpServers, deployed)
+        if (request.acpSessionId && this.byAcp.has(request.acpSessionId)) {
+            throw new RuntimeError('ACP session is already attached', { code: 'session_conflict', statusCode: 409 })
         }
-        const gateway = await this.gateway.resolve(request.gateway ?? {})
+        const client = await waitForSetup(this.ensureClient(), signal)
+        if (signal?.aborted) throw cancelledBeforeStart()
+        let mcpServers = normalizeMcpServers(request.mcpServers)
+        const gateway = await waitForSetup(this.gateway.resolve(request.gateway ?? {}), signal)
         if (gateway !== null) {
             mcpServers = mergeMcpServers(mcpServers, [gateway.server])
         }
+        if (this.config.deployedMcpServers?.length) {
+            mcpServers = mergeMcpServers(mcpServers, this.config.deployedMcpServers)
+        }
 
+        if (signal?.aborted) throw cancelledBeforeStart()
         let info: { sessionId: string; configOptions?: unknown }
         if (request.acpSessionId !== undefined) {
             info = await client.resumeSession({
@@ -324,9 +375,16 @@ export class AcpRuntime {
             createdAt: Date.now(),
             lastUsedAt: Date.now(),
         }
+        try {
+            if (signal?.aborted) throw cancelledBeforeStart()
+            await this.applyModelConfig(client, entry, info.configOptions)
+            if (signal?.aborted) throw cancelledBeforeStart()
+        } catch (error) {
+            await client.closeSession(entry.acpSessionId).catch(() => {})
+            throw error
+        }
         this.sessions.set(entry.key, entry)
         this.byAcp.set(entry.acpSessionId, entry)
-        await this.applyModelConfig(client, entry, info.configOptions)
         this.prune()
         return entry
     }
@@ -336,44 +394,25 @@ export class AcpRuntime {
         entry: SessionEntry,
         configOptions: unknown,
     ): Promise<void> {
-        const options = Array.isArray(configOptions) ? configOptions : []
-        const find = (id: string): { id: string; value: string } | null => {
-            const option = options.find(
-                (item) =>
-                    item !== null &&
-                    typeof item === 'object' &&
-                    (item as Record<string, unknown>).id === id,
-            ) as Record<string, unknown> | undefined
-            if (option === undefined) return null
-            const current = option.currentValue
-            const groups = Array.isArray(option.options) ? option.options : []
-            // configOptions 的 options 可能是 group 嵌套（每项含 group/options 子数组），
-            // 也可能是扁平选项（每项含 value/name）。两种都要能按模型名匹配到具体的 ACP value。
-            for (const group of groups) {
-                if (group === null || typeof group !== 'object') continue
-                const candidates = Array.isArray((group as Record<string, unknown>).options)
-                    ? ((group as Record<string, unknown>).options as unknown[])
-                    : [group]
-                for (const candidate of candidates) {
-                    if (candidate === null || typeof candidate !== 'object') continue
-                    const value = (candidate as Record<string, unknown>).value
-                    const name = (candidate as Record<string, unknown>).name
-                    if (value === this.config.model || name === this.config.model) {
-                        return {
-                            id,
-                            value: String(value ?? current ?? this.config.model ?? ''),
-                        }
-                    }
-                }
+        const model = this.config.model
+        if (model) {
+            const options = Array.isArray(configOptions) ? configOptions : []
+            const selector = options.find(option => option?.id === 'model')
+            // rc.3 encodes the provider and model together as the opaque selection value.
+            const provider = this.config.modelProvider
+            const routes = (provider ? [provider] : ['agentarts-model', 'deepseek-official'])
+                .map(name => JSON.stringify([name, model]))
+            const groups: Array<{ value?: string; name?: string; options?: Array<{ value: string; name?: string }> }> =
+                selector?.options ?? []
+            const values = groups.flatMap(group => group.options ?? (group.value ? [{ name: group.name, value: group.value }] : []))
+            const selection = routes.map(route => values.find(item => item.value === route)).find(Boolean)
+                ?? (provider === undefined ? values.find(item => item.value === model || item.name === model) : undefined)
+            if (!selection) throw new RuntimeError('Configured model is unavailable in the ACP session', {
+                code: 'model_unavailable', statusCode: 502,
+            })
+            if (selection.value !== selector.currentValue) {
+                await client.setConfigOption(entry.acpSessionId, 'model', selection.value)
             }
-            return {
-                id,
-                value: String(current ?? this.config.model ?? ''),
-            }
-        }
-        const model = this.config.model === undefined ? null : find('model')
-        if (model !== null && model.value !== '') {
-            await client.setConfigOption(entry.acpSessionId, 'model', model.value)
         }
         if (this.config.reasoningEffort !== undefined) {
             await client.setConfigOption(
@@ -407,12 +446,13 @@ export class AcpRuntime {
 
     private prune(): void {
         const now = Date.now()
-        for (const [key, entry] of this.sessions) {
-            if (entry.current !== undefined) continue
+        for (const entry of this.sessions.values()) {
+            if (entry.current !== undefined || entry.quarantined) continue
             if (now - entry.lastUsedAt <= this.config.sessionTtlMs) continue
-            this.sessions.delete(key)
-            this.byAcp.delete(entry.acpSessionId)
-            this.promptStore.remove(entry.acpSessionId)
+            if (this.client?.running) {
+                // Closing is asynchronous. Keep the mapping quarantined until the backend confirms.
+                void this.retireSession(entry, this.client).catch(() => {})
+            }
         }
     }
 }
@@ -438,13 +478,15 @@ class PromptRun implements PromptRunHooks {
     private readonly permissionBroker: PermissionBroker
     private readonly queue: AsyncQueue<RuntimeEvent>
     private readonly text = new Map<TextChannel, TextState>()
-    private readonly messages = new Map<string, unknown>()
+    private overflow = false
     private controller = new AbortController()
     private settled = false
     private cancelled = false
     private timedOut = false
     private readonly runId = randomUUID()
     private timer: NodeJS.Timeout | null = null
+    private grace?: NodeJS.Timeout
+    private readonly promptDeadline = new AbortController()
 
     constructor(options: PromptRunOptions) {
         this.runtime = options.runtime
@@ -490,15 +532,21 @@ class PromptRun implements PromptRunHooks {
 
             const timeoutMs = this.request.timeoutMs ?? this.runtime.config.promptTimeoutMs
             this.timer = setTimeout(() => {
-                this.timedOut = true
-                this.cancelled = true
-                this.client.cancel(this.entry.acpSessionId)
+                if (!this.cancelled) {
+                    this.timedOut = true
+                    this.cancel()
+                }
             }, timeoutMs)
 
             const result = await this.client.prompt(this.entry.acpSessionId, [
                 { type: 'text', text: this.request.prompt },
-            ])
-            const stopReason = result?.stopReason ?? 'end_turn'
+            ], this.promptDeadline.signal)
+            if (this.cancelled || result?.stopReason === 'cancelled') {
+                this.cancelled = true
+                throw new RuntimeError('prompt cancelled', { code: 'cancelled', statusCode: 499 })
+            }
+            if (!result?.stopReason) throw new RuntimeError('missing ACP stopReason', { statusCode: 502 })
+            const stopReason = result.stopReason
             const output = this.finalText('message')
             const thought = this.finalText('thought')
             for (const [channel, state] of this.text) {
@@ -514,6 +562,7 @@ class PromptRun implements PromptRunHooks {
                 this.emit({ type: 'text_end', channel, messageId: state.messageId })
             }
             this.emit({ type: 'run_finished', stopReason, output, thought })
+            if (this.overflow) throw new RuntimeError('round event buffer limit exceeded')
             this.queue.end()
             return {
                 ok: true,
@@ -526,28 +575,30 @@ class PromptRun implements PromptRunHooks {
                 error: null,
             }
         } catch (error) {
+            if (this.promptDeadline.signal.aborted) {
+                await this.runtime.retireSession(this.entry, this.client).catch(() => {
+                    // Keep the session quarantined until explicit close succeeds or the client exits.
+                })
+            }
             const runtimeError = toRuntimeError(error)
-            const code = this.timedOut
-                ? 'prompt_timeout'
-                : this.cancelled
-                  ? 'cancelled'
-                  : runtimeError.code
-            const message = this.timedOut
-                ? 'prompt timed out'
-                : this.cancelled
-                  ? 'prompt cancelled'
-                  : runtimeError.message
-            const stopReason = this.timedOut
-                ? 'timeout'
-                : this.cancelled
-                  ? 'cancelled'
-                  : 'error'
+            let stopReason = 'error'
+            let failure = runtimeError
+            if (this.overflow) {
+                failure = new RuntimeError('round event buffer limit exceeded', { code: 'output_limit', statusCode: 503 })
+            } else if (this.timedOut) {
+                stopReason = 'timeout'
+                failure = new RuntimeError('prompt timed out', { code: 'prompt_timeout', statusCode: 504 })
+            } else if (this.cancelled) {
+                stopReason = 'cancelled'
+                failure = new RuntimeError('prompt cancelled', { code: 'cancelled', statusCode: 499 })
+            }
+            const { code, message, statusCode, data } = failure
             this.emit({
                 type: 'error',
                 code,
                 message,
-                statusCode: this.timedOut ? 504 : runtimeError.statusCode,
-                data: runtimeError.data,
+                statusCode,
+                data,
             })
             this.emit({
                 type: 'run_finished',
@@ -567,12 +618,13 @@ class PromptRun implements PromptRunHooks {
                 error: {
                     code,
                     message,
-                    statusCode: this.timedOut ? 504 : runtimeError.statusCode,
-                    data: runtimeError.data,
+                    statusCode,
+                    data,
                 },
             }
         } finally {
             if (this.timer !== null) clearTimeout(this.timer)
+            clearTimeout(this.grace)
             this.settled = true
             this.promptStore.remove(this.entry.acpSessionId)
             this.runtime.complete(this.entry)
@@ -580,7 +632,7 @@ class PromptRun implements PromptRunHooks {
     }
 
     onUpdate(update: Record<string, unknown>): void {
-        if (this.settled) return
+        if (this.settled || this.cancelled) return
         const kind = update.sessionUpdate
         const tokenMeta = update._meta as Record<string, unknown> | undefined
         const isToken = tokenMeta?.['dsh-acp/token'] === true
@@ -616,6 +668,8 @@ class PromptRun implements PromptRunHooks {
                     type: 'text_delta',
                     channel,
                     delta: text,
+                    ...(typeof tokenMeta?.attemptId === 'string' ? { attemptId: tokenMeta.attemptId } : {}),
+                    ...(typeof tokenMeta?.revision === 'number' ? { revision: tokenMeta.revision } : {}),
                     messageId: state.messageId,
                     token: true,
                 })
@@ -637,7 +691,6 @@ class PromptRun implements PromptRunHooks {
 
         if (kind === 'tool_call') {
             const callId = String(update.toolCallId ?? randomUUID())
-            this.messages.set(callId, update)
             this.emit({
                 type: 'tool_call',
                 toolCallId: callId,
@@ -707,10 +760,11 @@ class PromptRun implements PromptRunHooks {
     }
 
     cancel(): void {
-        if (this.settled) return
+        if (this.settled || this.cancelled) return
         this.cancelled = true
         this.controller.abort()
-        this.client.cancel(this.entry.acpSessionId)
+        this.grace = setTimeout(() => this.promptDeadline.abort(), 5000)
+        if (this.client.running) this.client.cancel(this.entry.acpSessionId)
     }
 
     private finalText(channel: TextChannel): string {
@@ -720,7 +774,10 @@ class PromptRun implements PromptRunHooks {
     }
 
     private emit(event: RuntimeEvent): void {
-        this.queue.push(event)
+        if (!this.queue.push(event) && !this.overflow) {
+            this.overflow = true
+            this.cancel()
+        }
     }
 }
 
@@ -742,18 +799,3 @@ function textOf(content: unknown): string {
 }
 
 export { normalizeSystemPromptMode }
-
-/**
- * Read deployment-level MCP servers injected by the Adapter's agent_metadata translation
- * layer (AGENTRUN_ACP_MCP_SERVERS). Supports multiple gateways; returns [] when unset.
- */
-function readDeployedMcpServers(): AcpMcpServer[] {
-    const raw = process.env.AGENTRUN_ACP_MCP_SERVERS
-    if (raw === undefined || raw.trim() === '') return []
-    try {
-        const parsed = JSON.parse(raw) as unknown
-        return Array.isArray(parsed) ? (parsed as AcpMcpServer[]) : []
-    } catch {
-        return []
-    }
-}

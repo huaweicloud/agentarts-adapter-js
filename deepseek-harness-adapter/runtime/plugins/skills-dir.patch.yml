@@ -1,0 +1,18 @@
+# Custom skill root for dsh-acp-agentarts-runtime.
+#
+# Loaded with `dsh --profile acp --patch <this file>`. Targets the bundle row
+# `skill-filesystem` (`@deepseek-ai/dsh-skill-filesystem`) that dsh-base mounts;
+# cordis-plugin-include only warns about an unknown row id, so a wrong id would
+# silently drop this mount.
+#
+# A loader patch replaces the row's whole `config`, so the fields the sibling
+# `dsh-skill-obs` layer sets are restated here: `includeDefaultRoots` keeps the
+# project/user/bundled roots, and `watch: false` matches its statically filled
+# mount (skills are in place before the first model call, no per-session
+# chokidar watcher needed).
+- id: skill-filesystem
+  config:
+    includeDefaultRoots: true
+    customSkillDirs:
+      - !!js (process.env.AGENTRUN_DIR || "/home/agentarts") + "/skills"
+    watch: false

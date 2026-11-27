@@ -1,9 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest'
+import { AGENT_METADATA_ENV, MODEL_API_KEY_ENV } from '../src/index.js'
 
-import { PKG_NAME } from '@agentarts/shared';
-
-describe('@agentarts/shared', () => {
-  it('导出项目标识', () => {
-    expect(PKG_NAME).toBe('agentarts-harness-adapter');
-  });
-});
+it('exports the metadata and model credential keys used by the adapter', () => {
+    expect(AGENT_METADATA_ENV).toBe('agent_metadata')
+    expect(MODEL_API_KEY_ENV).toBe('MODEL_API_KEY')
+})

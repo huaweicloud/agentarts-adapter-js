@@ -1,60 +1,61 @@
-import { buildChildEnv, loadAdapterConfig } from './config.js';
-import { resolveCredentials, SdkCredentialProvider } from './credential.js';
-import type { AdapterConfig } from './types.js';
-import type { ResolvedCredentials } from './credential.js';
+import { loadConfig, parseAcpChildEnv, type RuntimeConfig } from '@agentarts/harness-dsh-runtime'
+import { buildChildEnv, loadAdapterConfig } from './config.js'
+import { resolveCredentials, resolveRegion, SdkCredentialProvider, type CredentialProvider } from './credential.js'
 
-/**
- * Translate the parsed agent_metadata (AdapterConfig) into the ACP runtime's
- * environment contract, so runtime/loadConfig() picks it up unchanged.
- *
- * - model name / system prompt → DSH_ACP_MODEL / DSH_SYSTEM_PROMPT
- * - everything the DSH child needs (memory, skills, credentials, MCP headers)
- *   is serialized into DSH_ACP_CHILD_ENV (the AcpClient merges it over process.env)
- * - the first MCP gateway → DSH_AGENTARTS_GATEWAY_* (resolved by runtime's GatewayResolver)
- */
-export function applyAgentMetadataToAcpEnv(
-  config: AdapterConfig,
-  env: NodeJS.ProcessEnv = process.env,
-  credentials?: ResolvedCredentials,
-): void {
-  if (config.model.name !== '') env['DSH_ACP_MODEL'] = config.model.name;
-  if (config.systemPrompt !== '') env['DSH_SYSTEM_PROMPT'] = config.systemPrompt;
+/** Prepare the DSH-specific deployment config before assembling the shared protocol adapter. */
+export async function loadHostedDshConfig(
+    env: NodeJS.ProcessEnv = process.env,
+    provider: CredentialProvider = SdkCredentialProvider.fromRegion(resolveRegion(env)),
+): Promise<RuntimeConfig> {
+    const configFile = env.AGENTRUN_CONFIG_FILE || env.AGENT_METADATA_FILE
+    if (!configFile && !env.agent_metadata && !env.AGENT_METADATA) return loadConfig(env)
 
-  // Reuse the Adapter's child-env builder (memory/skills/OBS credentials/agent_metadata/...).
-  // credentials carries the model/memory API keys resolved via the identity service.
-  env['DSH_ACP_CHILD_ENV'] = JSON.stringify(buildChildEnv(config, env, credentials));
+    const childEnvOverrides = parseAcpChildEnv(env.DSH_ACP_CHILD_ENV)
+    const config = loadAdapterConfig({ env })
+    if (config.allowedTools !== null) {
+        throw new Error('agent_metadata.allowed_tools requires a supported DSH tool policy')
+    }
 
-  // All MCP gateways → ACP mcpServers (http type), merged into every session/new.
-  // Multiple gateways are supported: each entry of agent_metadata.mcp_config becomes one server.
-  const mcpServers = config.mcps.map((mcp) => {
-    const headers = credentials?.mcpHeaders[mcp.serverName] ?? mcp.headers;
-    return {
-      name: mcp.serverName,
-      type: 'http',
-      url: mcp.endpoint,
-      headers: Object.entries(headers).map(([name, value]) => ({ name, value })),
-    };
-  });
-  if (mcpServers.length > 0) {
-    env['AGENTRUN_ACP_MCP_SERVERS'] = JSON.stringify(mcpServers);
-  }
+    const credentials = await resolveDeploymentCredentials(config, provider)
+    const childEnv = buildChildEnv(config, env, credentials)
+    childEnv.agent_metadata = JSON.stringify({ skills: config.skills, user_bucket: config.metadata.user_bucket })
+
+    const deployedServers = config.mcps.map(mcp => ({
+        name: mcp.serverName,
+        type: 'http',
+        url: mcp.endpoint,
+        headers: Object.entries(credentials.mcpHeaders[mcp.serverName] ?? mcp.headers)
+            .map(([name, value]) => ({ name, value })),
+    }))
+    const model = config.metadata.model_config as { name?: string; base_url?: string } | undefined
+    const modelName = typeof model?.name === 'string' ? model.name : undefined
+    // The profile embeds the normalized AgentArts endpoint. The legacy provider still reads its own base URL.
+    const legacyBaseUrl = env.DEEPSEEK_BASE_URL || model?.base_url
+    if (typeof legacyBaseUrl === 'string' && legacyBaseUrl) childEnv.DEEPSEEK_BASE_URL = legacyBaseUrl
+    return loadConfig({
+        ...env,
+        agent_metadata: JSON.stringify({ mcp_gateway_config: config.metadata.mcp_gateway_config }),
+        DSH_ACP_MODEL: env.DSH_ACP_MODEL || modelName,
+        DSH_AGENT_CWD: env.DSH_AGENT_CWD || env.DSH_ACP_CWD || env.AGENTRUN_DSH_CWD,
+        DSH_SYSTEM_PROMPT: env.DSH_SYSTEM_PROMPT || config.systemPrompt,
+        DSH_ACP_CHILD_ENV: JSON.stringify({ ...childEnv, ...childEnvOverrides }),
+        AGENTRUN_ACP_MCP_SERVERS: env.AGENTRUN_ACP_MCP_SERVERS || JSON.stringify(deployedServers),
+    })
 }
 
-/** Parse agent_metadata, resolve credentials via the identity service, then apply ACP env. */
-export async function bootstrapAcpFromAgentMetadata(env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  const config = loadAdapterConfig({ env });
-  const timeoutMs = config.dsh.timeoutMs;
-  // The credential provider does not consume AbortSignal, so guard the whole resolution with an
-  // explicit timeout rejection: a stalled identity service must not hang process startup forever.
-  const timeout = new Promise<never>((_, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`identity credential resolution timed out after ${timeoutMs}ms (startup aborted)`));
-    }, timeoutMs);
-    timer.unref();
-  });
-  const credentials = await Promise.race([
-    resolveCredentials(config, SdkCredentialProvider.fromRegion(), AbortSignal.timeout(timeoutMs)),
-    timeout,
-  ]);
-  applyAgentMetadataToAcpEnv(config, env, credentials);
+async function resolveDeploymentCredentials(config: ReturnType<typeof loadAdapterConfig>, provider: CredentialProvider) {
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            const error = new Error('Identity credential resolution timed out')
+            controller.abort(error)
+            reject(error)
+        }, config.dsh.timeoutMs)
+    })
+    try {
+        return await Promise.race([resolveCredentials(config, provider, controller.signal), deadline])
+    } finally {
+        clearTimeout(timer)
+    }
 }

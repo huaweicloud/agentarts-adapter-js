@@ -39,6 +39,8 @@ export class AcpClient {
     private notifications = new Map<string, Set<NotificationHandler>>()
     private requests = new Map<string, RequestHandler>()
     private stderrTail = ''
+    private malformedLines = 0
+    private nextMalformedWarning = 0
     private closed: Error | null = null
     private started = false
     private stopping = false
@@ -80,6 +82,8 @@ export class AcpClient {
         if (this.running) return
         this.closed = null
         this.stopping = false
+        this.malformedLines = 0
+        this.nextMalformedWarning = 0
         const command = this.options.command
         const isCmd = process.platform === 'win32' && /\.cmd$/i.test(command)
         const argsText = this.options.args.map(quoteWindows).join(' ')
@@ -96,13 +100,13 @@ export class AcpClient {
                   ],
                   {
                       cwd: this.options.cwd,
-                      env: { ...process.env, ...this.options.env },
+                      env: this.options.env,
                       stdio: ['pipe', 'pipe', 'pipe'],
                   },
               )
             : spawn(command, this.options.args, {
                   cwd: this.options.cwd,
-                  env: { ...process.env, ...this.options.env },
+                  env: this.options.env,
                   stdio: ['pipe', 'pipe', 'pipe'],
               })
 
@@ -124,10 +128,7 @@ export class AcpClient {
             this.stderrTail = (this.stderrTail + chunk.toString('utf8')).slice(-16_384)
         })
         const lines = createInterface({ input: child.stdout })
-        lines.on('line', (line) => {
-            if (this.options.verbose) process.stderr.write(`[acp <-] ${line}\n`)
-            void this.handleLine(line)
-        })
+        lines.on('line', (line) => { void this.handleLine(line) })
         child.stdin.on('error', () => undefined)
     }
 
@@ -178,8 +179,8 @@ export class AcpClient {
         return this.request('session/set_config_option', { sessionId, configId, value })
     }
 
-    prompt(sessionId: string, prompt: unknown[]): Promise<{ stopReason?: string }> {
-        return this.request('session/prompt', { sessionId, prompt }, 0) as Promise<{
+    prompt(sessionId: string, prompt: unknown[], signal?: AbortSignal): Promise<{ stopReason?: string }> {
+        return this.request('session/prompt', { sessionId, prompt }, 0, signal) as Promise<{
             stopReason?: string
         }>
     }
@@ -196,10 +197,17 @@ export class AcpClient {
         return this.request('session/close', { sessionId })
     }
 
-    request(method: string, params: unknown, timeoutMs = this.options.requestTimeoutMs): Promise<unknown> {
+    request(method: string, params: unknown, timeoutMs = this.options.requestTimeoutMs, signal?: AbortSignal): Promise<unknown> {
         this.assertRunning()
         const id = ++this.nextId
-        return new Promise((resolve, reject) => {
+        let abort: (() => void) | undefined
+        return new Promise<unknown>((resolve, reject) => {
+            abort = () => {
+                this.pending.delete(id)
+                reject(new AcpError('ACP prompt cancellation deadline exceeded', -32001))
+            }
+            if (signal?.aborted) { abort(); return }
+            signal?.addEventListener('abort', abort, { once: true })
             const timer =
                 timeoutMs > 0
                     ? setTimeout(() => {
@@ -215,7 +223,7 @@ export class AcpClient {
                 this.pending.delete(id)
                 reject(error)
             }
-        })
+        }).finally(() => { if (abort) signal?.removeEventListener('abort', abort) })
     }
 
     async dispose(): Promise<void> {
@@ -258,15 +266,32 @@ export class AcpClient {
         child.stdin.write(`${JSON.stringify(message)}\n`)
     }
 
+    private warnMalformedLine(): void {
+        this.malformedLines++
+        const now = Date.now()
+        if (now < this.nextMalformedWarning) return
+
+        process.stderr.write(`[acp] ignored ${this.malformedLines} malformed ACP stdout line(s)\n`)
+        this.malformedLines = 0
+        this.nextMalformedWarning = now + 30_000
+    }
+
     private async handleLine(line: string): Promise<void> {
         const text = line.trim()
         if (text === '') return
-        let message: JsonObject
+        let parsed: unknown
         try {
-            message = JSON.parse(text) as JsonObject
+            parsed = JSON.parse(text)
         } catch {
+            this.warnMalformedLine()
             return
         }
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            this.warnMalformedLine()
+            return
+        }
+        const message = parsed as JsonObject
+        if (this.options.verbose) process.stderr.write(`[acp <-] ${line}\n`)
 
         const method = typeof message.method === 'string' ? message.method : null
         const id = typeof message.id === 'number' ? message.id : null
