@@ -1,0 +1,16 @@
+# Custom session-store mount for dsh-acp-agentarts-runtime.
+#
+# Loaded with `dsh --profile acp --patch <this file>`. Targets the bundle row
+# `session-persistence-jsonl` (`@deepseek-ai/dsh-session-persistence-jsonl`).
+# The mount root follows AGENTRUN_DIR, like the skills patch; unset means the
+# container default /home/agentarts.
+#
+# A loader patch replaces the row's whole `config`, never deep-merges it. Keep
+# `root` plus any other field the deployment overrides (compression,
+# listConcurrency) in this file if they are ever set there.
+#
+# The expression is quoted because patch configs are parsed as YAML: an
+# unquoted scalar containing `:` would be read as a mapping.
+- id: session-persistence-jsonl
+  config:
+    root: !!js "(process.env.AGENTRUN_DIR || '/home/agentarts') + '/sessions'"
