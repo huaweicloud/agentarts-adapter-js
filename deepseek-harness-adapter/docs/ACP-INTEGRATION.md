@@ -64,7 +64,7 @@ node adapter/dist/main.js
 ### 2.4 发请求（用 Node，避免 PowerShell GBK 编码问题）
 
 ```cmd
-node -e "fetch('http://127.0.0.1:8080/invocations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:'demo-1',prompt:'我叫什么？另外，现在支持哪些 skill？',stream:false})}).then(r=>r.text()).then(t=>console.log(t))"
+node -e "fetch('http://127.0.0.1:18092/invocations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:'demo-1',prompt:'我叫什么？另外，现在支持哪些 skill？',stream:false})}).then(r=>r.text()).then(t=>console.log(t))"
 ```
 
 > **中文注意**：不要用 PowerShell 的 `Invoke-RestMethod` 直接发中文 body（GBK 编码会变成 `?`）。用 Node 的 `fetch`（默认 UTF-8）即可。

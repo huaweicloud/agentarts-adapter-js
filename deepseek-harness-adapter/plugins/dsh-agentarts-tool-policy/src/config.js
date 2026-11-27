@@ -2,6 +2,17 @@
  * Resolve the deployment allow list and translate AgentArts capability names
  * into DSH tool names.
  *
+ * `allowed_tools` is a **whitelist of AgentArts capability names** (`read_file`,
+ * `write_file`, `edit_file`, `glob`, `list_files`, `grep`, `bash`). Once it is
+ * configured (and does not contain the `*` wildcard), every global tool the list
+ * does not name — after translation — is denied.
+ *
+ * Only capability names are recognised: a DSH tool name written verbatim
+ * (`read`, `read_image`, …) is not a whitelist entry and is reported as unknown.
+ * A configured list that translates to nothing therefore denies every global
+ * tool; it never degrades to "no restriction". Only an absent list (or `*`)
+ * permits everything.
+ *
  * @module dsh-agentarts-tool-policy/config
  */
 
@@ -15,8 +26,8 @@ const WILDCARD = '*'
  * AgentArts platform capability name → DSH tool name(s).
  *
  * `bash`/`pwsh` are platform-conditional in DSH (only one is registered per OS),
- * so both are emitted as candidates and the caller filters them against the live
- * tool registry. `list_files` has no DSH equivalent: DSH lists files via `glob`.
+ * so both are emitted as candidates. `list_files` has no DSH equivalent: DSH
+ * lists files via `glob`.
  */
 const AGENTARTS_TO_DSH = {
   bash: ['bash', 'pwsh'],
@@ -48,7 +59,8 @@ function normalize(list) {
 
 /**
  * @param {string | undefined} value
- * @returns {string[] | null} null when the variable is absent or not a usable list
+ * @returns {string[] | null} the parsed names, or null when the variable is
+ *   absent, empty, or not a JSON array (i.e. no list was configured)
  */
 function parseAllowEnv(value) {
   if (value === undefined || value === '') return null
@@ -58,18 +70,25 @@ function parseAllowEnv(value) {
   } catch {
     return null
   }
-  if (!Array.isArray(parsed)) return null
-  const names = normalize(parsed)
-  return names.length > 0 ? names : null
+  return Array.isArray(parsed) ? normalize(parsed) : null
 }
 
 /**
  * @param {object} [rawConfig]
- * @returns {{ wildcard: boolean, tools: string[], unknown: string[] }}
+ * @returns {{ specified: boolean, wildcard: boolean, tools: string[], unknown: string[] }}
+ *   `specified: false` means no whitelist was configured (permit everything).
+ *   `wildcard: true` means `*` was named (permit everything).
+ *   `unknown` lists configured names that are not AgentArts capabilities; they
+ *   grant nothing. `tools` is the translated allow list, so an empty `tools`
+ *   denies every global tool.
  */
 export function resolveAllowList(rawConfig) {
-  const names = parseAllowEnv(process.env[ALLOW_ENV]) ?? normalize(rawConfig?.allow)
-  if (names.includes(WILDCARD)) return { wildcard: true, tools: [], unknown: [] }
+  const envNames = parseAllowEnv(process.env[ALLOW_ENV])
+  const configured = envNames !== null || rawConfig?.allow !== undefined
+  if (!configured) return { specified: false, wildcard: false, tools: [], unknown: [] }
+
+  const names = envNames ?? normalize(rawConfig?.allow)
+  if (names.includes(WILDCARD)) return { specified: true, wildcard: true, tools: [], unknown: [] }
 
   const tools = new Set()
   const unknown = []
@@ -81,5 +100,5 @@ export function resolveAllowList(rawConfig) {
     }
     for (const tool of dsh) tools.add(tool)
   }
-  return { wildcard: false, tools: [...tools], unknown }
+  return { specified: true, wildcard: false, tools: [...tools], unknown }
 }

@@ -1,15 +1,21 @@
 /**
  * dsh-agentarts-tool-policy — enforce the AgentArts `allowed_tools` whitelist.
  *
- * The platform requests a tool whitelist through `agent_metadata.allowed_tools`,
+ * The platform requests a tool whitelist through `agent_metadata.allowed_tools`
  * using its own capability names (`read_file`, `write_file`, `edit_file`,
- * `list_files`, `glob`, `grep`, `bash`) plus the `*` wildcard. The Adapter forwards
- * the raw list into the DSH child environment as `AGENTARTS_ALLOWED_TOOLS`; this
- * bundle maps those names onto DSH tool names and applies a scoped
- * `ctx.tools.restrict({ allow })` at `agent/created`, so the model only sees (and
- * can only call) the permitted tools.
+ * `list_files`, `glob`, `grep`, `bash`), plus the `*` wildcard. The Adapter
+ * forwards the raw list into the DSH child environment as
+ * `AGENTARTS_ALLOWED_TOOLS`; this bundle translates those names into DSH tool
+ * names and applies a scoped `ctx.tools.restrict({ allow })` at `agent/created`.
  *
- * `*` (or an empty list) leaves the agent unchanged: every tool is permitted.
+ * `allowed_tools` is a whitelist, so a configured list always restricts: every
+ * global tool it does not name — after translation — is denied, **even when the
+ * configured names translate to no registered tool**. Only an absent list or `*`
+ * permits everything.
+ *
+ * Scoped registrations (per-session MCP tools, plugin-registered tools such as
+ * the AgentArts memory tools) are outside `tools.restrict()`'s reach by design and
+ * stay visible.
  *
  * @module @agentarts/dsh-agentarts-tool-policy
  */
@@ -27,11 +33,15 @@ export const inject = ['tools']
  * @param {object} [rawConfig] - the row's `config` from the bundle patch
  */
 export function apply(ctx, rawConfig) {
-  const { wildcard, tools, unknown } = resolveAllowList(rawConfig)
-  for (const capability of unknown) {
-    console.warn(`[${name}] unknown AgentArts capability "${capability}" ignored`)
+  const { specified, wildcard, tools, unknown } = resolveAllowList(rawConfig)
+  // No whitelist configured, or `*`: leave the agent unchanged.
+  if (!specified || wildcard) return
+
+  for (const name of unknown) {
+    console.warn(
+      `[${name}] agent_metadata.allowed_tools entry "${name}" is not an AgentArts capability; it grants no tool`,
+    )
   }
-  if (wildcard || tools.length === 0) return
 
   ctx.on('agent/created', ({ agent }) => {
     // All tool plugins are mounted by the time the first agent is created, so the
@@ -40,8 +50,7 @@ export function apply(ctx, rawConfig) {
     // `tools.restrict` (it throws on unknown names).
     const known = new Set(ctx.tools.definitions().map((definition) => definition.name))
     const allow = tools.filter((tool) => known.has(tool))
-    if (allow.length === 0) return
-    // Scoped restriction: only this agent's visibility shrinks to the allow list.
+    // Whitelist semantics: an empty allow list denies every global tool.
     agent.ctx.tools.restrict({ allow })
   })
 }
