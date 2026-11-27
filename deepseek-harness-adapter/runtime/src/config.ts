@@ -209,7 +209,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
             stringEnv(env, 'AGENTRUN_MAX_CONCURRENCY') ?? stringEnv(env, 'DSH_ACP_MAX_CONCURRENCY'),
             15,
         ),
-        host: stringEnv(env, 'AGENTARTS_BIND_IP') ?? stringEnv(env, 'HOST') ?? null,
+        host: stringEnv(env, 'AGENT_SERVER_HOST') ?? stringEnv(env, 'HOST') ?? null,
         port: int(stringEnv(env, 'PORT'), 8080),
         logLevel: stringEnv(env, 'DSH_ACP_LOG_LEVEL') ?? 'info',
         agentRuntimeType,

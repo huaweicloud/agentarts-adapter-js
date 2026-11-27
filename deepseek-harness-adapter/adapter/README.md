@@ -26,7 +26,7 @@ PORT=8080 node adapter/dist/main.js
 |---|---|
 | `PORT`，默认 8080 | /ag-ui、/invocations、/ws、/ping 的监听端口 |
 | `A2A_PORT`，默认 8001 | A2A JSON-RPC、REST 和 /.well-known/agent-card.json |
-| `AGENTARTS_BIND_IP` | 监听地址。容器对外提供 A2A 时显式设为可达地址 |
+| `AGENT_SERVER_HOST` | 监听地址。容器对外提供 A2A 时显式设为可达地址 |
 | `AGENTARTS_PROTOCOL_PUBLIC_ORIGIN` | Agent Card 中公布的 A2A 地址。本地默认对应回环端口 |
 | `AGENTARTS_PROTOCOL_STORAGE_DIR` | SDK 任务和线程存储目录，默认 .agentarts-protocol，每个目录由单一服务进程使用 |
 | `AGENTARTS_PROTOCOL_STORAGE_KEY` | 可选的 64 位十六进制存储加密密钥 |

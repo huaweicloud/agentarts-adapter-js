@@ -162,7 +162,7 @@ node dist/main.js / adapter 调用 createDshApp(config)
        ├─ new GatewayResolver(config.gateway)
        └─ new PermissionBroker(config.permission)
   └─ createRuntimeApp(runtime, {maxConcurrency})
-       └─ app.run(host, port)                     端口：PORT(8080)；host：AGENTARTS_BIND_IP/HOST
+       └─ app.run(host, port)                     端口：PORT(8080)；host：AGENT_SERVER_HOST/HOST
 ```
 
 `loadConfig()` 在装配前还会 `readMetadata()`（`agent_metadata` / `AGENT_METADATA` / `AGENT_METADATA_FILE`）并用 `childEnvironment()` 生成白名单子进程环境；详见 §7。
@@ -452,7 +452,7 @@ export type * from './types.js'
 | env | 字段 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `PORT` | `port` | 8080 | 仅正整数生效 |
-| `AGENTARTS_BIND_IP` / `HOST` | `host` | `null`（SDK 自行推断） | |
+| `AGENT_SERVER_HOST` / `HOST` | `host` | `null`（SDK 自行推断） | |
 | `AGENTRUN_MAX_CONCURRENCY` / `DSH_ACP_MAX_CONCURRENCY` | `maxConcurrency` | 15 | 由 SDK 执行，超限 503 |
 | `AGENT_RUNTIME_TYPE` | `agentRuntimeType` | `DSH` | `DSH` / `DSH_HEADLESS` / `PI` / `CODEX`，adapter 用它选择链路 A/B |
 | `DSH_ACP_LOG_LEVEL` | `logLevel` | `info` | **已解析但未被消费** |

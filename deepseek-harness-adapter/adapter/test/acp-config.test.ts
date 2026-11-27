@@ -42,7 +42,7 @@ it('loads wrapped #14 metadata with scoped credentials and both deployment MCP g
     ])
 })
 
-it('keeps explicit model selection and refuses tool policies ACP cannot enforce', async () => {
+it('keeps explicit model selection and forwards allowed_tools into the child environment', async () => {
     const provider = { resolveApiKey: vi.fn() }
     const config = await loadHostedDshConfig({
         DSH_ACP_MODEL: 'explicit-model',
@@ -51,8 +51,11 @@ it('keeps explicit model selection and refuses tool policies ACP cannot enforce'
     expect(config.model).toBe('explicit-model')
     expect(config.modelProvider).toBeUndefined()
     expect(provider.resolveApiKey).not.toHaveBeenCalled()
-    await expect(loadHostedDshConfig({ agent_metadata: '{"allowed_tools":["read"]}' }, provider))
-        .rejects.toThrow('requires a supported DSH tool policy')
+
+    const withTools = await loadHostedDshConfig({
+        agent_metadata: '{"allowed_tools":["read","read_image"]}',
+    }, provider)
+    expect(withTools.acpEnv.AGENTARTS_ALLOWED_TOOLS).toBe('["read","read_image"]')
 })
 
 it('identifies malformed ACP child env before resolving hosted credentials', async () => {
