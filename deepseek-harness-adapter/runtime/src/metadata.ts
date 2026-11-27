@@ -33,16 +33,15 @@ export function readMetadata(env: NodeJS.ProcessEnv): Metadata {
  * Variables needed by the OS, CLI, profile, model and the mount patches.
  * Platform credentials stay in the parent.
  *
- * `AGENTRUN_DIR` / `AGENTRUN_SESSIONS_DIR` are forwarded because the plugin
- * patches evaluate them inside the child (`!!js` config expressions) to locate
- * the skills and session-store mounts; without them the mounts silently fall
- * back to `/home/agentarts`.
+ * `AGENTRUN_DIR` is forwarded because the plugin patches evaluate it inside the
+ * child (`!!js` config expressions) to locate the skills and session-store
+ * mounts; without it the mounts silently fall back to `/home/agentarts`.
  */
 export function childEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
     const names = new Set(['PATH', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'SYSTEMROOT', 'WINDIR',
         'COMSPEC', 'PATHEXT', 'TEMP', 'TMP', 'TMPDIR', 'APPDATA', 'LOCALAPPDATA', 'LANG', 'LC_ALL', 'TZ',
         'DSH_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'DSH_TELEMETRY_DISABLED',
-        'AGENTRUN_DIR', 'AGENTRUN_SESSIONS_DIR',
+        'AGENTRUN_DIR',
         'DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR'])
     return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] =>
         typeof entry[1] === 'string' && names.has(entry[0].toUpperCase())))

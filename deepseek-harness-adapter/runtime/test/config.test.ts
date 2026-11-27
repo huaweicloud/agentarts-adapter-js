@@ -59,35 +59,27 @@ describe('patch mount', () => {
 })
 
 describe('session store mount', () => {
-    it('targets the DSH session row and keeps the custom-dir precedence', () => {
+    it('targets the DSH session row under the AGENTRUN_DIR mount', () => {
         const patch = readFileSync(SESSIONS_FILE, 'utf8')
         expect(patch).toContain('id: session-persistence-jsonl')
-        expect(patch).toContain('AGENTRUN_SESSIONS_DIR')
-        expect(patch).toContain("process.env.AGENTRUN_DIR + '/sessions'")
-        expect(patch).toContain("dshHomePath('sessions')")
+        expect(patch).toContain('AGENTRUN_DIR')
+        expect(patch).toContain("+ '/sessions'")
+        // The full-path override was dropped on purpose; AGENTRUN_DIR is the only knob.
+        expect(patch).not.toContain('AGENTRUN_SESSIONS_DIR')
     })
 
-    it('evaluates to the configured mount, then AGENTRUN_DIR, then DSH home', () => {
+    it('evaluates to AGENTRUN_DIR/sessions, falling back to /home/agentarts/sessions', () => {
         const expression = readExpression(SESSIONS_FILE, /root: !!js "(.*)"/)
-        const previous = {
-            sessions: process.env.AGENTRUN_SESSIONS_DIR,
-            dir: process.env.AGENTRUN_DIR,
-        }
+        const previous = process.env.AGENTRUN_DIR
         try {
-            delete process.env.AGENTRUN_SESSIONS_DIR
             delete process.env.AGENTRUN_DIR
-            expect(evaluate(expression)).toBe('/dsh-home/sessions')
-
-            process.env.AGENTRUN_DIR = '/home/agentarts'
             expect(evaluate(expression)).toBe('/home/agentarts/sessions')
 
-            process.env.AGENTRUN_SESSIONS_DIR = '/mnt/sessions'
-            expect(evaluate(expression)).toBe('/mnt/sessions')
+            process.env.AGENTRUN_DIR = '/mnt/data'
+            expect(evaluate(expression)).toBe('/mnt/data/sessions')
         } finally {
-            if (previous.sessions === undefined) delete process.env.AGENTRUN_SESSIONS_DIR
-            else process.env.AGENTRUN_SESSIONS_DIR = previous.sessions
-            if (previous.dir === undefined) delete process.env.AGENTRUN_DIR
-            else process.env.AGENTRUN_DIR = previous.dir
+            if (previous === undefined) delete process.env.AGENTRUN_DIR
+            else process.env.AGENTRUN_DIR = previous
         }
     })
 })
@@ -119,15 +111,12 @@ describe('skills mount', () => {
 })
 
 describe('child environment', () => {
-    it('forwards the mount directories the patches evaluate inside the child', () => {
+    it('forwards the mount directory the patches evaluate inside the child', () => {
         const config = loadConfig({
             AGENTRUN_DIR: '/mnt/data',
             AGENTRUN_SESSIONS_DIR: '/mnt/sessions',
             AGENTARTS_PROTOCOL_TOKEN: 'platform-only',
         })
-        expect(config.acpEnv).toEqual({
-            AGENTRUN_DIR: '/mnt/data',
-            AGENTRUN_SESSIONS_DIR: '/mnt/sessions',
-        })
+        expect(config.acpEnv).toEqual({ AGENTRUN_DIR: '/mnt/data' })
     })
 })

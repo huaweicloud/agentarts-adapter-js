@@ -68,16 +68,16 @@ Key variables: `DSH_ACP_COMMAND`, `DSH_ACP_ARGS`, `DSH_AGENT_CWD`,
 
 `skills-dir.patch.yml` and `sessions-dir.patch.yml` are mounted with `--patch`
 by default (unless `DSH_ACP_ARGS` is set explicitly) and evaluate `AGENTRUN_DIR`
-inside the DSH loader. `AGENTRUN_DIR` / `AGENTRUN_SESSIONS_DIR` are forwarded to
-the child through the environment allow-list, so setting them here takes effect:
+inside the DSH loader. `AGENTRUN_DIR` is forwarded to the child through the
+environment allow-list, so setting it here takes effect:
 
 - skills: `skill-filesystem.customSkillDirs` = `<AGENTRUN_DIR>/skills`
   (falls back to `/home/agentarts/skills`). The patch restates
   `includeDefaultRoots: true` / `watch: false` because a loader patch replaces
   the row's whole `config`;
-- sessions: `AGENTRUN_SESSIONS_DIR` (full path) → `<AGENTRUN_DIR>/sessions` →
-  DSH default `$DSH_HOME/sessions`. Any other deployment-specific fields of
-  that row (`compression`, `listConcurrency`) belong in the same file.
+- sessions: `session-persistence-jsonl.root` = `<AGENTRUN_DIR>/sessions`
+  (falls back to `/home/agentarts/sessions`). Any other deployment-specific
+  fields of that row (`compression`, `listConcurrency`) belong in the same file.
 
 ## Build and test
 
