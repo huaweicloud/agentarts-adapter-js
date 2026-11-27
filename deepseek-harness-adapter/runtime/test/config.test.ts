@@ -93,10 +93,12 @@ describe('session store mount', () => {
 })
 
 describe('skills mount', () => {
-    it('targets the skill registry and mounts <AGENTRUN_DIR>/skills', () => {
+    it('targets the dsh-base skill row and restates the config a patch replaces', () => {
         const patch = readFileSync(SKILLS_FILE, 'utf8')
-        expect(patch).toContain('id: skill-registry')
+        expect(patch).toContain('id: skill-filesystem')
         expect(patch).toContain('customSkillDirs')
+        expect(patch).toContain('includeDefaultRoots: true')
+        expect(patch).toContain('watch: false')
         expect(patch).toContain('AGENTRUN_DIR')
     })
 
@@ -113,5 +115,19 @@ describe('skills mount', () => {
             if (previous === undefined) delete process.env.AGENTRUN_DIR
             else process.env.AGENTRUN_DIR = previous
         }
+    })
+})
+
+describe('child environment', () => {
+    it('forwards the mount directories the patches evaluate inside the child', () => {
+        const config = loadConfig({
+            AGENTRUN_DIR: '/mnt/data',
+            AGENTRUN_SESSIONS_DIR: '/mnt/sessions',
+            AGENTARTS_PROTOCOL_TOKEN: 'platform-only',
+        })
+        expect(config.acpEnv).toEqual({
+            AGENTRUN_DIR: '/mnt/data',
+            AGENTRUN_SESSIONS_DIR: '/mnt/sessions',
+        })
     })
 })

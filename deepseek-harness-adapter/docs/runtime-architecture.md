@@ -145,7 +145,7 @@ index.ts：统一再导出（公共 API 面）
 | `plugins/system-prompt-injector.mjs` | DSH 插件 | 挂在 `system-prompt/assemble` 瀑布最外层，读每会话 JSON 并按 `append/replace/replace-all` 改写最终提示词 |
 | `plugins/system-prompt.patch.yml` | `--patch` 覆盖 | `insert` 上面插件 |
 | `plugins/sessions-dir.patch.yml` | `--patch` 覆盖（默认挂载） | 重定向 bundle 行 `session-persistence-jsonl` 的 `root`：`AGENTRUN_SESSIONS_DIR` → `<AGENTRUN_DIR>/sessions` → `dshHomePath('sessions')` |
-| `plugins/skills-dir.patch.yml` | `--patch` 覆盖（默认挂载） | 把 `skill-registry.customSkillDirs` 指向 `<AGENTRUN_DIR>/skills`（缺省 `/home/agentarts/skills`） |
+| `plugins/skills-dir.patch.yml` | `--patch` 覆盖（默认挂载） | 重定向 bundle 行 `skill-filesystem` 的 `customSkillDirs` → `<AGENTRUN_DIR>/skills`（缺省 `/home/agentarts/skills`），并重述 `includeDefaultRoots: true` / `watch: false`（patch 整段替换该行 config） |
 | `plugins/mcp-sse-bridge.mjs` | 独立 stdio 进程 | legacy MCP HTTP+SSE ⇄ stdio 双向 JSON-RPC 中继（Gateway 目标为 SSE 时的适配器） |
 
 ---
@@ -527,7 +527,7 @@ export type * from './types.js'
 
 ### 7.7 只被插件（而非 TS）消费的变量
 
-`AGENTRUN_DIR`、`AGENTRUN_SESSIONS_DIR`（由 DSH 启动时的 `!!js` patch 求值，见 `plugins/skills-dir.patch.yml`、`plugins/sessions-dir.patch.yml`）、`DSH_SYSTEM_PROMPT_DEBUG_FILE`（`system-prompt-injector` 调试落盘）、`DSH_ACP_TOKEN_STREAM`（同时透传子进程）、`MCP_BRIDGE_HEADERS`（SSE bridge 进程内）。`DSH_ACP_MAX_SESSIONS` 仅出现在 `.env.example`，代码未解析。
+`AGENTRUN_DIR`、`AGENTRUN_SESSIONS_DIR`：由 `childEnvironment()` 白名单转发进子进程，DSH 启动时由 `!!js` patch 求值（见 `plugins/skills-dir.patch.yml`、`plugins/sessions-dir.patch.yml`）；父进程未设置时回退 `/home/agentarts`。`DSH_SYSTEM_PROMPT_DEBUG_FILE`（`system-prompt-injector` 调试落盘）、`DSH_ACP_TOKEN_STREAM`（同时透传子进程）、`MCP_BRIDGE_HEADERS`（SSE bridge 进程内）由插件消费。`DSH_ACP_MAX_SESSIONS` 仅出现在 `.env.example`，代码未解析。
 
 ---
 
@@ -617,9 +617,9 @@ pnpm --filter @agentarts/harness-dsh-runtime start      # node dist/main.js
 - `dist/` 与 `coverage/` 被根 `.gitignore` 忽略；仓库里的 `runtime/dist` 是本地构建产物。
 - 容器部署要点：
   1. 子进程 cwd 是私有临时目录，所以业务工作区必须通过 `session/new.cwd`（`DSH_AGENT_CWD`）显式传入；
-  2. `AGENTRUN_DIR` 挂载 `skills/`、`sessions/`，`sessions-dir.patch.yml` 会把 DSH 会话存储重定向到该目录；
-  3. 该 patch 是**整行 config 替换**（loader 不深合并），若还要覆盖 `compression`、`listConcurrency` 等字段，必须写在同一文件里；
-  4. 子进程 env 是 `process.env` + `DSH_ACP_CHILD_ENV` 的全量合并（不做白名单，与 adapter 链路 B 的 `launch-spec` 策略不同）；
+  2. `AGENTRUN_DIR` 挂载 `skills/`、`sessions/`：`skills-dir.patch.yml` 设置 `skill-filesystem.customSkillDirs`，`sessions-dir.patch.yml` 重定向会话存储；两者都由 `childEnvironment()` 白名单转发进子进程，父进程未设置时回退 `/home/agentarts`；
+  3. 两个 patch 都是**整行 config 替换**（loader 不深合并），`skills-dir.patch.yml` 因此重述了 `includeDefaultRoots` / `watch`，sessions 若要覆盖 `compression`、`listConcurrency` 也必须写在同一文件；
+  4. 子进程 env 是白名单（`metadata.ts · childEnvironment`，OS/CLI、`DSH_*`、`DEEPSEEK_*`、`AGENTRUN_DIR`/`AGENTRUN_SESSIONS_DIR` 等）+ `DSH_ACP_CHILD_ENV` 显式叠加，平台凭证不继承；
   5. `dsh` 需在 PATH 中，或通过 `DSH_ACP_COMMAND` 指到绝对路径。
 
 ---
