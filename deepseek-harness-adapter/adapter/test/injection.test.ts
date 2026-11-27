@@ -148,7 +148,7 @@ describe('child env injection', () => {
 });
 
 describe('profile rendering', () => {
-  it('materializes the ACP profile and both plugins without writing secrets', () => {
+  it('materializes the ACP profile and hosted plugins without writing secrets', () => {
     const { config } = fixture();
     const rendered = materializeProfile(config);
     expect(spawnSync).toHaveBeenCalledWith('pnpm', expect.arrayContaining(['install', '--prod']),
@@ -161,11 +161,15 @@ describe('profile rendering', () => {
       '@deepseek-ai/dsh-acp-app',
       '@agentarts/dsh-agentarts-memory',
       '@agentarts/dsh-skill-obs',
+      '@agentarts/dsh-agentarts-tool-policy',
     ]);
     expect(manifest.dependencies['@agentarts/dsh-agentarts-memory']).toBe(
       'file:./vendor/dsh-agentarts-memory',
     );
     expect(manifest.dependencies['@agentarts/dsh-skill-obs']).toBe('file:./vendor/dsh-skill-obs');
+    expect(manifest.dependencies['@agentarts/dsh-agentarts-tool-policy']).toBe(
+      'file:./vendor/dsh-agentarts-tool-policy',
+    );
     expect(
       existsSync(
         join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-agentarts-memory', 'index.js'),
@@ -174,6 +178,11 @@ describe('profile rendering', () => {
     expect(
       existsSync(
         join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-skill-obs', 'index.js'),
+      ),
+    ).toBe(true);
+    expect(
+      existsSync(
+        join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-agentarts-tool-policy', 'index.js'),
       ),
     ).toBe(true);
     expect(
