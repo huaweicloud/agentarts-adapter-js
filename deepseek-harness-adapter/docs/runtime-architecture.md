@@ -457,7 +457,7 @@ export type * from './types.js'
 | `AGENT_RUNTIME_TYPE` | `agentRuntimeType` | `DSH` | `DSH` / `DSH_HEADLESS` / `PI` / `CODEX`，adapter 用它选择链路 A/B |
 | `DSH_ACP_LOG_LEVEL` | `logLevel` | `info` | **已解析但未被消费** |
 | `DSH_ENV_FILE` | — | `.env` | `.env` 文件路径 |
-| `agent_metadata` / `AGENT_METADATA` / `AGENT_METADATA_FILE` | — | — | 托管元数据：JSON 文本或文件路径。字段 `system_prompt`、`model_config{name,base_url,api_key,credential_provider_name}`、`mcp_gateway_config.endpoint`；非法 JSON/类型直接抛错，`allowed_tools` 被拒绝 |
+| `agent_metadata` / `AGENT_METADATA` / `AGENT_METADATA_FILE` | — | — | 托管元数据：JSON 文本或文件路径。字段 `system_prompt`、`model_config{name,base_url,api_key,credential_provider_name}`、`mcp_gateway_config.endpoint`；非法 JSON/类型直接抛错；`allowed_tools` 经 `AGENTARTS_ALLOWED_TOOLS` 透传给 dsh-agentarts-tool-policy 插件强制执行 |
 
 托管元数据是本包与 AgentArts 控制面的契约：`system_prompt` 成为默认系统提示词、`model_config` 提供模型名/端点/密钥、`mcp_gateway_config.endpoint` 作为 Gateway `mcpUrl` 的回退。环境变量始终优先于元数据。
 

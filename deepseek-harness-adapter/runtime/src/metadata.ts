@@ -25,7 +25,6 @@ export function readMetadata(env: NodeJS.ProcessEnv): Metadata {
         data.model_config?.api_key, data.model_config?.credential_provider_name, data.mcp_gateway_config?.endpoint]) {
         if (value != null && typeof value !== 'string') throw new Error('Invalid agent_metadata string field')
     }
-    if (data.allowed_tools != null) throw new Error('agent_metadata.allowed_tools requires a supported DSH tool policy')
     return data
 }
 
