@@ -47,5 +47,41 @@ export const DATALAKE_CHILD_ENV_PATTERN = /^AGENTRUN_DATALAKE_[A-Z0-9_]+$/;
 /** Per-upstream MCP endpoint convention named by the architecture. */
 export const MCP_URL_ENV_PATTERN = /^MCP_[A-Z0-9_]+_URL$/;
 
+/**
+ * AgentArts observation env contract for agentarts-instrumentation-dsh, named after the repo's
+ * UPPER_CASE convention. The plugin itself reads its same-name otel keys in lower case from
+ * `process.env` (its KNOWN_OTEL_KEYS contract), so the DSH child receives the lower-case
+ * canonical names; both casings are accepted at the adapter boundary (see
+ * `readInstrumentationChildEnv`).
+ */
+export const INSTRUMENTATION_ENV = [
+  'AGENTARTS_AGENTOPS_OTEL_AGENT_APM_ENABLE',
+  'AGENTARTS_AGENTOPS_OTEL_AGENT_AOM_ENABLE',
+  'AGENTARTS_AGENTOPS_APM_TOKEN',
+  'AGENTARTS_AGENTOPS_APM_EXPORTER_ENDPOINT',
+  'AGENTARTS_AGENTOPS_AOM_ACCESS_CODE',
+  'AGENTARTS_AGENTOPS_AOM_EXPORTER_ENDPOINT',
+  'AGENTARTS_AGENTOPS_AOM_PROMETHEUS_ID',
+  'AGENT_DOMAIN_ID',
+  'AGENTARTS_PROJECT_ID',
+  'AGENT_RESOURCE_ID',
+  'RESOURCE_TYPE',
+] as const;
+
+/**
+ * Read the child-facing instrumentation variables from a parent environment and normalize them
+ * to the plugin's canonical lower-case key names. Both the adapter's UPPER_CASE names and the
+ * plugin's lower-case names are accepted; on case-sensitive systems only the exact spelling is
+ * visible, so both lookups are needed. The UPPER_CASE spelling wins when both are set.
+ */
+export function readInstrumentationChildEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of INSTRUMENTATION_ENV) {
+    const value = env[key] ?? env[key.toLowerCase()];
+    if (value !== undefined) result[key.toLowerCase()] = value;
+  }
+  return result;
+}
+
 /** Keys whose values must not be printed by demos and diagnostics. */
-export const SENSITIVE_ENV_PATTERN = /(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION)/i;
+export const SENSITIVE_ENV_PATTERN = /(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTHORIZATION|ACCESS_CODE)/i;

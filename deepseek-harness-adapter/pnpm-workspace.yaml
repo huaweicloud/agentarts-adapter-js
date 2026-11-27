@@ -3,6 +3,8 @@ packages:
     - adapter
     - runtime
     - plugins/*
+    # agentarts-instrumentation-dsh is a vendored release artifact (no workspace build/test).
+    - '!plugins/agentarts-instrumentation-dsh'
 
 allowBuilds:
     esbuild: true

@@ -12,6 +12,7 @@ import {
   MODEL_API_KEY_ENV,
   MODEL_ENV,
   MODEL_PROVIDER_ENV,
+  readInstrumentationChildEnv,
   SENSITIVE_ENV_PATTERN,
 } from '@agentarts/harness-dsh-shared';
 import { parse } from 'yaml';
@@ -379,6 +380,9 @@ export function buildChildEnv(
       env[key] = value;
     }
   }
+  // agentarts-instrumentation-dsh reads its otel config from same-name environment
+  // variables inside the DSH child; normalize the adapter names to the plugin's lower case.
+  Object.assign(env, readInstrumentationChildEnv(parentEnv));
 
   env['DSH_HOME'] = config.dsh.dshHome;
   env['DSH_AGENTS_HOME'] = parentEnv['DSH_AGENTS_HOME'] ?? join(config.dsh.dshHome, 'agents-home');

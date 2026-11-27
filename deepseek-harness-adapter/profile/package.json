@@ -4,6 +4,7 @@
   "dependencies": {
     "@agentarts/dsh-agentarts-memory": "file:./vendor/dsh-agentarts-memory",
     "@agentarts/dsh-skill-obs": "file:./vendor/dsh-skill-obs",
+    "agentarts-instrumentation-dsh": "file:./vendor/agentarts-instrumentation-dsh",
     "esdk-obs-nodejs": "^3.26.10",
     "fflate": "^0.8.2",
     "yaml": "^2.9.1",
@@ -15,7 +16,8 @@
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-acp-app",
         "@agentarts/dsh-agentarts-memory",
-        "@agentarts/dsh-skill-obs"
+        "@agentarts/dsh-skill-obs",
+        "agentarts-instrumentation-dsh"
       ]
     }
   }
