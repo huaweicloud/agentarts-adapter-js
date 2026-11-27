@@ -1,9 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { loadHostedDshConfig } from '../src/acp-config.js'
 
-// Tests run without a metadata service; stub OBS credential resolution.
-const noObs = async () => ({})
-
 it('loads wrapped #14 metadata with scoped credentials and both deployment MCP gateways', async () => {
     const env = {
         AGENTARTS_PROTOCOL_TOKEN: 'parent-only',
@@ -24,7 +21,7 @@ it('loads wrapped #14 metadata with scoped credentials and both deployment MCP g
         }),
     }
     const resolveApiKey = vi.fn(async (provider: string) => provider + '-key')
-    const config = await loadHostedDshConfig(env, { resolveApiKey }, noObs)
+    const config = await loadHostedDshConfig(env, { resolveApiKey })
 
     expect(config.model).toBe('shared-model')
     expect(config.modelProvider).toBeUndefined()
@@ -45,20 +42,17 @@ it('loads wrapped #14 metadata with scoped credentials and both deployment MCP g
     ])
 })
 
-it('keeps explicit model selection and forwards allowed_tools into the child environment', async () => {
+it('keeps explicit model selection and refuses tool policies ACP cannot enforce', async () => {
     const provider = { resolveApiKey: vi.fn() }
     const config = await loadHostedDshConfig({
         DSH_ACP_MODEL: 'explicit-model',
         agent_metadata: '{"model_config":{"name":"deployment-model"}}',
-    }, provider, noObs)
+    }, provider)
     expect(config.model).toBe('explicit-model')
     expect(config.modelProvider).toBeUndefined()
     expect(provider.resolveApiKey).not.toHaveBeenCalled()
-
-    const withTools = await loadHostedDshConfig({
-        agent_metadata: '{"allowed_tools":["read","read_image"]}',
-    }, provider, noObs)
-    expect(withTools.acpEnv.AGENTARTS_ALLOWED_TOOLS).toBe('["read","read_image"]')
+    await expect(loadHostedDshConfig({ agent_metadata: '{"allowed_tools":["read"]}' }, provider))
+        .rejects.toThrow('requires a supported DSH tool policy')
 })
 
 it('identifies malformed ACP child env before resolving hosted credentials', async () => {
@@ -66,6 +60,6 @@ it('identifies malformed ACP child env before resolving hosted credentials', asy
     await expect(loadHostedDshConfig({
         DSH_ACP_CHILD_ENV: '{"token":"example-value',
         agent_metadata: '{"model_config":{"credential_provider_name":"model-provider"}}',
-    }, { resolveApiKey }, noObs)).rejects.toThrow(/^DSH_ACP_CHILD_ENV is not valid JSON$/)
+    }, { resolveApiKey })).rejects.toThrow(/^DSH_ACP_CHILD_ENV is not valid JSON$/)
     expect(resolveApiKey).not.toHaveBeenCalled()
 })

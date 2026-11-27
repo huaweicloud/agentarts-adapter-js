@@ -1,4 +1,0 @@
-{
-  "name": "AgentArts Tool Policy",
-  "description": "Enforce the AgentArts allowed_tools whitelist via scoped tools.restrict()."
-}

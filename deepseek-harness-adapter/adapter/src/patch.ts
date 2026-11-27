@@ -118,11 +118,6 @@ const HOST_PLUGINS = [
     // esdk-obs-nodejs/fflate/yaml/agentarts-sdk are runtime dependencies of this bundle.
     withDependencies: true,
   },
-  {
-    package: '@agentarts/dsh-agentarts-tool-policy',
-    vendor: 'vendor/dsh-agentarts-tool-policy',
-    source: '../../plugins/dsh-agentarts-tool-policy/',
-  },
 ] as const;
 
 const HOST_PLUGIN_ASSETS = [

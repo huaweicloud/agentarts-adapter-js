@@ -1,4 +1,0 @@
-{
-  "name": "AgentArts 工具策略",
-  "description": "通过作用域 tools.restrict() 强制执行 AgentArts allowed_tools 白名单。"
-}

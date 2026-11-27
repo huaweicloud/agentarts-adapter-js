@@ -42,7 +42,7 @@ HTTP 或 WS 携带 `eventId` 时，adapter 对同一 sessionId 和 eventId 做�
 
 创建会话时合并请求级 MCP、单网关配置和部署级 MCP。部署级 MCP 优先于同名请求配置，请求改用其他网关目标时使用请求自身凭据。子进程仅接收部署白名单和 `DSH_ACP_CHILD_ENV` 的显式覆盖，OBS 使用仅含 skills 和 user_bucket 的 metadata。`DSH_ACP_CHILD_ENV` 接受 JSON 对象中的字符串值，JSON 格式错误时启动会报告该变量名。
 
-使用记忆和 OBS 技能前按 [ACP 集成说明](../docs/ACP-INTEGRATION.md) 生成部署 profile。`memory_config.memory_user_id` 可指定记忆 actor，`AGENTARTS_MEMORY_USER_ID` 可以覆盖它。`allowed_tools` 会经 `AGENTARTS_ALLOWED_TOOLS` 透传给 `dsh-agentarts-tool-policy` 插件，在 DSH 进程内以 `tools.restrict({ allow })` 强制执行工具白名单。
+使用记忆和 OBS 技能前按 [ACP 集成说明](../docs/ACP-INTEGRATION.md) 生成部署 profile。`memory_config.memory_user_id` 可指定记忆 actor，`AGENTARTS_MEMORY_USER_ID` 可以覆盖它。包含 `allowed_tools` 列表的部署会收到配置错误，直到 ACP 执行层可以强制应用工具白名单。
 
 ## 验证
 
