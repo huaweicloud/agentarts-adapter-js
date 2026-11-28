@@ -1,5 +1,5 @@
 import {
-    ENV_SESSION_ID, ENV_EVENT_ID, ENV_ATTEMPT, ENV_RECALL_RESULT,
+    ENV_SESSION_ID, ENV_EVENT_ID, ENV_ATTEMPT, ENV_RECALL_RESULT, readInstrumentationChildEnv,
     type LaunchSpec, type RoundRequest,
 } from '@agentarts/harness-dsh-shared'
 
@@ -24,6 +24,8 @@ export function buildLaunchSpec(req: RoundRequest, recallResult: string): Launch
             env[key] = value
         }
     }
+    // Observation config goes to the child with the plugin's canonical lower-case names.
+    Object.assign(env, readInstrumentationChildEnv(process.env))
     env[ENV_SESSION_ID] = req.sessionId
     env[ENV_EVENT_ID] = req.eventId
     env[ENV_ATTEMPT] = String(req.attempt)

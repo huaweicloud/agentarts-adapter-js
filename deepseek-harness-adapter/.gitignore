@@ -7,3 +7,7 @@ coverage/
 docs/design/
 .agentarts-events/
 .agentarts-protocol/
+
+# agentarts-instrumentation-dsh is a vendored release artifact; its runtime entry ships in dist/.
+!plugins/agentarts-instrumentation-dsh/dist/
+!plugins/agentarts-instrumentation-dsh/dist/plugin.mjs

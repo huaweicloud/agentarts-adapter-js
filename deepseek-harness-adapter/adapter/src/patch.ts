@@ -60,6 +60,8 @@ export function renderPatch(
     },
     // The pi-ai route config is composed from several defaults; verify presence only.
     { id: 'llm-pi-ai', disabled: false },
+    // The observation bundle is always mounted; it self-disables without otel config.
+    { id: 'agentarts-instrumentation-dsh', disabled: false },
   ];
   if (config.memory !== undefined) {
     expected.push({ id: 'dsh-agentarts-memory', disabled: false });
@@ -104,8 +106,19 @@ function isObsSkillRefs(skills: string): boolean {
   return true;
 }
 
+/** One Host bundle copied into the profile so DSH needs no registry install. */
+interface HostPlugin {
+  readonly package: string;
+  readonly vendor: string;
+  readonly source: string;
+  /** True when the bundle has runtime dependencies that must be installed by pnpm. */
+  readonly withDependencies?: boolean;
+  /** Asset list override; defaults to the standard Host plugin layout. */
+  readonly assets?: readonly string[];
+}
+
 /** Host bundles vendored into the profile so DSH needs no registry install. */
-const HOST_PLUGINS = [
+const HOST_PLUGINS: readonly HostPlugin[] = [
   {
     package: '@agentarts/dsh-agentarts-memory',
     vendor: 'vendor/dsh-agentarts-memory',
@@ -123,7 +136,25 @@ const HOST_PLUGINS = [
     vendor: 'vendor/dsh-agentarts-tool-policy',
     source: '../../plugins/dsh-agentarts-tool-policy/',
   },
-] as const;
+  {
+    // Vendored from the upstream release tarball; see plugins/agentarts-instrumentation-dsh/VENDORED.md.
+    package: 'agentarts-instrumentation-dsh',
+    vendor: 'vendor/agentarts-instrumentation-dsh',
+    source: '../../plugins/agentarts-instrumentation-dsh/',
+    assets: [
+      'package.json',
+      'dist',
+      'cordis.patch.yml',
+      'configure',
+      'locale',
+      'docs',
+      'icon.svg',
+      'config.example.json',
+      'README.md',
+      'SECURITY-NOTES.md',
+    ],
+  },
+];
 
 const HOST_PLUGIN_ASSETS = [
   'package.json',
@@ -144,7 +175,7 @@ function materializeHostPlugins(profileDir: string): void {
     const vendorDir = join(profileDir, plugin.vendor);
     const moduleDir = join(profileDir, 'node_modules', plugin.package);
     mkdirSync(vendorDir, { recursive: true });
-    for (const asset of HOST_PLUGIN_ASSETS) {
+    for (const asset of plugin.assets ?? HOST_PLUGIN_ASSETS) {
       cpSync(join(sourceDir, asset), join(vendorDir, asset), { recursive: true });
     }
     // pnpm install turns moduleDir into a symlink; remove it before re-copying the directory,
@@ -203,7 +234,7 @@ export function materializeProfile(
   );
   if (!bundlesMatch || !dependenciesMatch) {
     throw new Error(
-      'profile/package.json must bundle dsh-base, dsh-headless and every vendored Host plugin',
+      'profile/package.json must bundle dsh-base, dsh-acp-app and every vendored Host plugin',
     );
   }
   const rootConfig = readFileSync(join(templateDir, 'cordis.yml'), 'utf8');

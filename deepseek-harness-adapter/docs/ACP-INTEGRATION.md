@@ -1,6 +1,6 @@
 # ACP 集成说明（AgentArts Adapter × DSH ACP）
 
-本文档描述 **ACP 路线**下 Adapter 与 DSH 的集成方式：以 `dsh acp` 常驻子进程替代旧的 headless 一次性进程，并将 AgentArts 的记忆与 OBS 技能两个插件挂载进来。
+本文档描述 **ACP 路线**下 Adapter 与 DSH 的集成方式：以 `dsh acp` 常驻子进程替代旧的 headless 一次性进程，并将 AgentArts 的记忆、OBS 技能与可观测（APM/AOM）三个插件挂载进来。
 
 > 默认托管入口走 ACP。仍使用旧 profile 的调用方可显式选择 `AGENT_RUNTIME_TYPE=DSH_HEADLESS`。
 
@@ -16,11 +16,12 @@ AgentArts Adapter 服务（主进程，adapter/dist/main.js）
    └─ AcpClient ──spawn──► dsh acp 子进程（常驻，stdio JSON-RPC）
                               ├─ @deepseek-ai/dsh-acp-app（ACP profile bundle）
                               ├─ @agentarts/dsh-agentarts-memory（记忆插件）
-                              └─ @agentarts/dsh-skill-obs（OBS 技能插件）
+                              ├─ @agentarts/dsh-skill-obs（OBS 技能插件）
+                              └─ agentarts-instrumentation-dsh（可观测插件，APM/AOM）
 ```
 
 - **一个 `dsh acp` 子进程常驻**，多个 session 内存复用（不再有「每轮冷启动装配」）。
-- 两个插件通过 **`DSH_HOME/profiles/acp/`**（`materializeProfile` 生成）挂载：`package.json` 的 bundles 含 `dsh-acp-app` + 两个插件，`vendor/` + `node_modules/` 提供依赖。
+- 三个插件通过 **`DSH_HOME/profiles/acp/`**（`materializeProfile` 生成）挂载：`package.json` 的 bundles 含 `dsh-acp-app` + 三个插件，`vendor/` + `node_modules/` 提供依赖。
 
 ## 2. 部署步骤
 
@@ -136,8 +137,9 @@ mcp_config[i] → { name: serverName, type: 'http', url: endpoint,
 |---|---|---|
 | `@agentarts/dsh-agentarts-memory` | 记忆召回（`huawei_memory_search` 查长期记忆）、`huawei_memory_save`（存短期记忆，平台自动提取长期记忆） | acp profile bundles + vendor；env 经 `DSH_ACP_CHILD_ENV` 注入 |
 | `@agentarts/dsh-skill-obs` | 从 OBS 下载技能到 `<AGENTRUN_DIR>/skills` | 同上；`AGENTRUN_DIR` 为基目录，技能落 `<dir>/skills` |
+| `agentarts-instrumentation-dsh` | 采集 DSH trace/metric 上报 AgentArts APM/AOM | acp profile bundles + vendor；APM/AOM 配置优先走环境变量（`INSTRUMENTATION_ENV`，大写输入归一化为插件小写键）经白名单透传子进程 |
 
-**vendor 依赖落地**（`materializeHostPlugins` + `installProfileDependencies`）保留：插件依赖（`esdk-obs-nodejs`、`fflate`、`@huaweicloud/agentarts-sdk`）必须安装才能运行，且**依赖指纹未变时跳过重复安装**。
+**vendor 依赖落地**（`materializeHostPlugins` + `installProfileDependencies`）保留：插件依赖（`esdk-obs-nodejs`、`fflate`、`@huaweicloud/agentarts-sdk`）必须安装才能运行，且**依赖指纹未变时跳过重复安装**。`agentarts-instrumentation-dsh` 为单文件 bundle，无运行时依赖。
 
 ## 7. 验证清单
 

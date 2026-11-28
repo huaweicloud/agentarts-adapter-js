@@ -46,4 +46,19 @@ describe('buildLaunchSpec', () => {
         delete process.env.MCP_API_KEY
         delete process.env.MCP_SEARCH_URL
     })
+
+    it('仪器化插件环境变量归一化为小写后按白名单透传', () => {
+        process.env.AGENTARTS_AGENTOPS_APM_TOKEN = 'tok'
+        process.env.AGENTARTS_AGENTOPS_APM_EXPORTER_ENDPOINT = 'https://apm'
+        process.env.AGENT_DOMAIN_ID = 'dom'
+        const spec = buildLaunchSpec(
+            { sessionId: 's', prompt: 'p', eventId: 'e', attempt: 1 }, '')
+        expect(spec.env.agentarts_agentops_apm_token).toBe('tok')
+        expect(spec.env.agentarts_agentops_apm_exporter_endpoint).toBe('https://apm')
+        expect(spec.env.agent_domain_id).toBe('dom')
+        expect(spec.env.AGENTARTS_AGENTOPS_APM_TOKEN).toBeUndefined()
+        delete process.env.AGENTARTS_AGENTOPS_APM_TOKEN
+        delete process.env.AGENTARTS_AGENTOPS_APM_EXPORTER_ENDPOINT
+        delete process.env.AGENT_DOMAIN_ID
+    })
 })

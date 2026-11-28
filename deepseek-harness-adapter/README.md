@@ -11,7 +11,9 @@ deepseek-harness-adapter/
 ├── shared/     # env 键、公共类型
 ├── adapter/    # config、patch、recall、ops、scheduler、demo CLI
 ├── plugins/    # DSH Host 插件集合（每个插件一个独立目录）
-│   └── dsh-agentarts-memory/  # AgentArts 记忆：召回、工具、自动采集
+│   ├── dsh-agentarts-memory/           # AgentArts 记忆：召回、工具、自动采集
+│   ├── dsh-skill-obs/                  # OBS 技能：下载到 <AGENTRUN_DIR>/skills
+│   └── agentarts-instrumentation-dsh/  # AgentArts 可观测（APM/AOM）：vendor 自上游 release，env 优先配置
 ├── helper/     # 12/30 工具沙箱 helper
 ├── precheck/   # 装包扫描
 ├── profile/    # agentrun 三件套模板（base + headless + memory）
@@ -55,4 +57,5 @@ node scripts/smoke.mjs --dsh-command node --dsh-arg /absolute/path/to/dsh/lib/bi
 - pnpm workspace、TypeScript（NodeNext）、vitest、prettier。
 - 不修改 DSH 源码；通过 profile 三件套和 patch 装配。
 - 子进程使用白名单 env；记忆插件在 DSH 内召回，任务与兼容信封走 stdin。
+- agentarts-instrumentation-dsh 的可观测配置（APM/AOM）优先走环境变量：适配层侧用大写命名（`INSTRUMENTATION_ENV`，也接受插件的小写同名写法），注入 DSH 子进程时归一化为插件要求的小写键名；离线场景可用插件自带 configure 脚本写 `config.json`。
 - MCP 只支持 `streamable-http`，拒绝 SSE 和 stdio。
