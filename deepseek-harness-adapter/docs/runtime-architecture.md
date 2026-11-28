@@ -451,8 +451,8 @@ export type * from './types.js'
 
 | env | 字段 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `AGENT_SERVER_PORT` | `port` | 18092 | 仅正整数生效 |
-| `AGENT_SERVER_HOST` | `host` | `127.0.0.1` | 监听地址 |
+| `AGENT_SERVER_PORT` | `port` | 18092 | 仅正整数生效；兼容旧名 `PORT`（下个版本移除）|
+| `AGENT_SERVER_HOST` | `host` | `127.0.0.1` | 监听地址；兼容旧名 `AGENTARTS_BIND_IP`/`HOST`（下个版本移除）|
 | `AGENTRUN_MAX_CONCURRENCY` / `DSH_ACP_MAX_CONCURRENCY` | `maxConcurrency` | 15 | 由 SDK 执行，超限 503 |
 | `AGENT_RUNTIME_TYPE` | `agentRuntimeType` | `DSH` | `DSH` / `DSH_HEADLESS` / `PI` / `CODEX`，adapter 用它选择链路 A/B |
 | `DSH_ACP_LOG_LEVEL` | `logLevel` | `info` | **已解析但未被消费** |

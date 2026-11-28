@@ -8,10 +8,10 @@
  * `AGENTARTS_ALLOWED_TOOLS`; this bundle translates those names into DSH tool
  * names and applies a scoped `ctx.tools.restrict({ allow })` at `agent/created`.
  *
- * `allowed_tools` is a whitelist, so a configured list always restricts: every
+ * `allowed_tools` is a whitelist, so a configured non-empty list restricts: every
  * global tool it does not name — after translation — is denied, **even when the
- * configured names translate to no registered tool**. Only an absent list or `*`
- * permits everything.
+ * configured names translate to no registered tool**. An absent list, `*`, or an
+ * empty list permits everything.
  *
  * Scoped registrations (per-session MCP tools, plugin-registered tools such as
  * the AgentArts memory tools) are outside `tools.restrict()`'s reach by design and

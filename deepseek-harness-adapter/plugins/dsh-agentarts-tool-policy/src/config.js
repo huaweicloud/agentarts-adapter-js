@@ -60,7 +60,8 @@ function normalize(list) {
 /**
  * @param {string | undefined} value
  * @returns {string[] | null} the parsed names, or null when the variable is
- *   absent, empty, or not a JSON array (i.e. no list was configured)
+ *   absent, empty, or not a JSON array (i.e. no whitelist was configured).
+ *   An explicit `[]` is treated as "no whitelist" (permit everything).
  */
 function parseAllowEnv(value) {
   if (value === undefined || value === '') return null
@@ -70,24 +71,35 @@ function parseAllowEnv(value) {
   } catch {
     return null
   }
-  return Array.isArray(parsed) ? normalize(parsed) : null
+  if (!Array.isArray(parsed)) return null
+  const names = normalize(parsed)
+  return names.length > 0 ? names : null
 }
 
 /**
  * @param {object} [rawConfig]
  * @returns {{ specified: boolean, wildcard: boolean, tools: string[], unknown: string[] }}
- *   `specified: false` means no whitelist was configured (permit everything).
+ *   `specified: false` means no whitelist was configured (permit everything),
+ *   including an absent field, `["*"]` and `[]`.
  *   `wildcard: true` means `*` was named (permit everything).
  *   `unknown` lists configured names that are not AgentArts capabilities; they
  *   grant nothing. `tools` is the translated allow list, so an empty `tools`
  *   denies every global tool.
+ *
+ * A config-row `allow` only counts as configured when it is non-empty; the
+ * bundle patch always ships `allow: []` as a fallback, so an empty row value
+ * must mean "no whitelist". The environment follows the same rule: only a
+ * non-empty list (or one containing unknown names) restricts.
  */
 export function resolveAllowList(rawConfig) {
   const envNames = parseAllowEnv(process.env[ALLOW_ENV])
-  const configured = envNames !== null || rawConfig?.allow !== undefined
+  const configAllow = Array.isArray(rawConfig?.allow) && rawConfig.allow.length > 0
+    ? normalize(rawConfig.allow)
+    : null
+  const configured = envNames !== null || configAllow !== null
   if (!configured) return { specified: false, wildcard: false, tools: [], unknown: [] }
 
-  const names = envNames ?? normalize(rawConfig?.allow)
+  const names = envNames ?? configAllow ?? []
   if (names.includes(WILDCARD)) return { specified: true, wildcard: true, tools: [], unknown: [] }
 
   const tools = new Set()

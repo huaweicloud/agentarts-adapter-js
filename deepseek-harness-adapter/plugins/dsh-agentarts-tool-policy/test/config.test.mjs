@@ -53,12 +53,9 @@ test('a configured list of only unknown names denies every tool', () => {
   assert.deepEqual(r.unknown, ['not-a-tool'])
 })
 
-test('an explicitly empty array is a whitelist that denies every tool', () => {
+test('an explicit empty array permits everything', () => {
   const r = withEnv('[]', () => resolveAllowList({}))
-  assert.equal(r.specified, true)
-  assert.equal(r.wildcard, false)
-  assert.deepEqual(r.tools, [])
-  assert.deepEqual(r.unknown, [])
+  assert.deepEqual(r, { specified: false, wildcard: false, tools: [], unknown: [] })
 })
 
 test('falls back to the config allow list without env', () => {
@@ -67,4 +64,16 @@ test('falls back to the config allow list without env', () => {
   assert.equal(r.wildcard, false)
   assert.deepEqual([...r.tools].sort(), ['glob', 'write'])
   assert.deepEqual(r.unknown, [])
+})
+
+test('a real patch row with empty allow [] is not a whitelist (permit everything)', () => {
+  // 插件 bundle 的 cordis.patch.yml 每次都带 allow: []；空数组不算"已配置"，
+  // 否则默认部署会把所有工具全禁。
+  const r = withEnv(undefined, () => resolveAllowList({ allow: [] }))
+  assert.deepEqual(r, { specified: false, wildcard: false, tools: [], unknown: [] })
+})
+
+test('env empty array and row allow [] both permit everything', () => {
+  const r = withEnv('[]', () => resolveAllowList({ allow: [] }))
+  assert.deepEqual(r, { specified: false, wildcard: false, tools: [], unknown: [] })
 })

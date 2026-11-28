@@ -35,14 +35,15 @@ Names are matched against the live registry, so the platform-conditional
 | --- | --- |
 | unset (or empty string) | no restriction — every tool permitted |
 | `["*"]` | no restriction — every tool permitted |
-| `[]` | deny every global tool |
+| `[]` | no restriction — every tool permitted |
 | `["read_file","grep"]` | only the translated tools (`read`, `grep`) are permitted; every other global tool is denied |
+| `["edit"]` / `["not-a-capability"]` | every name is unknown → translates to nothing → every global tool denied |
 
 Rules:
 
-- Configured **without `*`** → every global tool the list does not name (after
-  translation) is denied. A list that translates to nothing (`[]`, or only
-  unknown names) denies every global tool; it never degrades to "no
+- A **non-empty** list without `*` restricts: every global tool the list does not
+  name (after translation) is denied. A non-empty list that translates to nothing
+  (only unknown names) denies every global tool; it never degrades to "no
   restriction".
 - Only AgentArts capability names are recognised. A DSH tool name written
   verbatim (`read`, `read_image`, …) is not a whitelist entry: it grants

@@ -38,7 +38,7 @@ ARG DSH_VERSION=0.2.2-rc.3
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 
 ENV NODE_ENV=production \
-    PORT=8080
+    AGENT_SERVER_PORT=18092
 
 WORKDIR /app/deepseek-harness-adapter
 
@@ -74,5 +74,5 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 VOLUME ["/opt/dsh-home", "/opt/agentrun", "/workspace"]
 
-EXPOSE 8080
+EXPOSE 18092
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
