@@ -1,0 +1,84 @@
+name: Build and publish npm package
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: deepseek-harness-adapter
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '12.21.0'
+      - name: Validate package version
+        id: metadata
+        shell: bash
+        run: |
+          version=$(node -p "require('./npm/package.json').version")
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Expected tag v$version, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: node scripts/pack-npm.mjs
+      - name: Verify installation outside the checkout
+        run: node scripts/verify-npm.mjs "dist/npm/huaweicloud-agentarts-adapter-js-${VERSION}.tgz"
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentarts-adapter-js-npm
+          path: deepseek-harness-adapter/dist/npm/*.tgz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: npm-publish-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: agentarts-adapter-js-npm
+      - name: Publish verified tarball
+        shell: bash
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          dist_tag=latest
+          if [[ "$VERSION" == *-* ]]; then dist_tag=next; fi
+          npm publish "./huaweicloud-agentarts-adapter-js-${VERSION}.tgz" --access public --tag "$dist_tag"

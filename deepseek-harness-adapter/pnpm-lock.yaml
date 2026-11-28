@@ -8,7 +8,17 @@ packageExtensionsChecksum: sha256-7rbzq+eK9qkJUSo6dL3bXLsXtVr2p54cYADGCopWbrw=
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.12(@types/node@24.19.2)(@vitest/coverage-v8@4.1.12)(vite@7.3.8(@types/node@24.19.2)(yaml@2.9.1))
 
   adapter:
     dependencies:
@@ -51,6 +61,8 @@ importers:
         version: 8.23.0
 
   plugins/dsh-agentarts-memory: {}
+
+  plugins/dsh-agentarts-tool-policy: {}
 
   plugins/dsh-skill-obs:
     dependencies:

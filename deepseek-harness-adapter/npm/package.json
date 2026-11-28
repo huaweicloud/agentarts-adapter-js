@@ -1,0 +1,15 @@
+{
+    "name": "@huaweicloud/agentarts-adapter-js",
+    "version": "0.0.1",
+    "description": "Huawei Cloud AgentArts adapter for DeepSeek Harness",
+    "license": "Apache-2.0",
+    "type": "module",
+    "repository": "git+https://github.com/huaweicloud/agentarts-adapter-js.git",
+    "bin": { "agentarts-adapter": "./bin/agentarts-adapter.mjs" },
+    "exports": {
+        ".": { "types": "./adapter/dist/main.d.ts", "import": "./adapter/dist/main.js" },
+        "./helper": { "types": "./tools/helper/src/index.d.ts", "import": "./tools/helper/src/index.js" },
+        "./precheck": { "types": "./tools/precheck/src/index.d.ts", "import": "./tools/precheck/src/index.js" }
+    },
+    "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" }
+}
