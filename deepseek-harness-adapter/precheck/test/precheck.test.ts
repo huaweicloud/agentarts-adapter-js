@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { checkNodeVersion } from '@agentarts/precheck';
+import { checkNodeVersion } from '../src/index.js';
 
 describe('@agentarts/precheck', () => {
   it('接受新版本 Node', () => {

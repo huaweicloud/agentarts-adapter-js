@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { banner } from '@agentarts/helper';
+import { banner } from '../src/index.js';
 
 describe('@agentarts/helper', () => {
   it('生成 banner', () => {

@@ -186,17 +186,19 @@ function materializeHostPlugins(profileDir: string): void {
 }
 
 /**
- * Install the profile's runtime dependencies with pnpm instead of copying the pnpm
- * link tree. Skipped when node_modules already matches the current package.json
- * fingerprint, so repeated launches do not reinstall on every invocation.
+ * Install the profile's runtime dependencies into its own module tree.
+ * Reuse the install when its manifest fingerprint matches.
  */
-function installProfileDependencies(profileDir: string, packageJson: string): void {
+function installProfileDependencies(profileDir: string, packageJson: string, packageManager: 'pnpm' | 'npm'): void {
   const fingerprint = createHash('sha256').update(packageJson).digest('hex');
   const markerPath = join(profileDir, '.deps-fingerprint');
   if (existsSync(join(profileDir, 'node_modules')) && existsSync(markerPath)) {
     if (readFileSync(markerPath, 'utf8').trim() === fingerprint) return;
   }
-  const result = spawnSync('pnpm', ['install', '--prod', '--ignore-scripts', '--reporter', 'append-only'], {
+  const args = packageManager === 'npm'
+    ? ['install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--install-links']
+    : ['install', '--prod', '--ignore-scripts', '--reporter', 'append-only'];
+  const result = spawnSync(packageManager, args, {
     cwd: profileDir,
     stdio: 'inherit',
     shell: true,
@@ -212,6 +214,7 @@ function installProfileDependencies(profileDir: string, packageJson: string): vo
 export function materializeProfile(
   config: AdapterConfig,
   templateDir = defaultTemplateDir(),
+  packageManager: 'pnpm' | 'npm' = 'pnpm',
 ): RenderedProfile {
   const template = readFileSync(join(templateDir, 'cordis.patch.yml.tmpl'), 'utf8');
   const { patch, expected } = renderPatch(config, template);
@@ -242,7 +245,7 @@ export function materializeProfile(
   mkdirSync(profileDir, { recursive: true });
   materializeHostPlugins(profileDir);
   writeFileSync(join(profileDir, 'package.json'), `${JSON.stringify(packageManifest, null, 2)}\n`);
-  installProfileDependencies(profileDir, JSON.stringify(packageManifest, null, 2));
+  installProfileDependencies(profileDir, JSON.stringify(packageManifest, null, 2), packageManager);
   writeFileSync(join(profileDir, 'cordis.patch.yml'), patch);
   writeFileSync(join(profileDir, 'cordis.yml'), rootConfig);
   return { profileDir, renderedPatch: patch, expected };

@@ -1,0 +1,5 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": { "outDir": "dist/tools", "rootDir": "." },
+    "include": ["helper/src", "precheck/src"]
+}

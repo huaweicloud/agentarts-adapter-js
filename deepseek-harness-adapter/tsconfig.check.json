@@ -2,13 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"],
-    "paths": {
-      "@agentarts/shared": ["./shared/src/index.ts"],
-      "@agentarts/helper": ["./helper/src/index.ts"],
-      "@agentarts/adapter": ["./adapter/src/index.ts"],
-      "@agentarts/precheck": ["./precheck/src/index.ts"]
-    }
+    "types": ["node"]
   },
   "include": [
     "shared/src/**/*.ts",

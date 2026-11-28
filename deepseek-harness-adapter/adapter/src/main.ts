@@ -37,8 +37,7 @@ export function createDefaultApp(config: RuntimeConfig) {
     app.run()
 }
 
-// 仅直接运行时启动服务；被测试导入时不启动
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+export async function startAdapter() {
     loadDotEnv(process.env.DSH_ENV_FILE)
     const runtimeType = process.env.AGENT_RUNTIME_TYPE || 'DSH'
     if (runtimeType === 'DSH') {
@@ -51,4 +50,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         }
         createDefaultApp(loadConfig())
     }
+}
+
+// 仅直接运行时启动服务；被测试导入时不启动
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+    await startAdapter()
 }
