@@ -38,6 +38,7 @@ ARG DSH_VERSION=0.2.2-rc.3
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 
 ENV NODE_ENV=production \
+    AGENT_SERVER_HOST=0.0.0.0 \
     AGENT_SERVER_PORT=18092
 
 WORKDIR /app/deepseek-harness-adapter
