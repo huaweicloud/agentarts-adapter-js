@@ -2,8 +2,9 @@ import { fileURLToPath } from 'node:url'
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { AcpClient } from '../src/acp-client.js'
 import { AcpRuntime } from '../src/runtime.js'
 import { loadConfig } from '../src/config.js'
 import type { RuntimeConfig } from '../src/types.js'
@@ -45,7 +46,10 @@ describe('ACP runtime management actions', () => {
             await turn.result
             const listed = await runtime.listSessions()
             expect(listed.sessions).toHaveLength(1)
-            expect(listed.sessions[0]).toMatchObject({ title: 'fake' })
+            expect(listed.sessions[0]).toMatchObject({
+                sessionId: expect.any(String),
+                cwd: expect.any(String),
+            })
         } finally {
             await runtime.dispose()
         }
@@ -118,5 +122,69 @@ describe('ACP runtime management actions', () => {
         await expect(
             runtime.runTurn({ sessionId: 'late', prompt: 'hi' }),
         ).rejects.toMatchObject({ code: 'shutting_down', statusCode: 503 })
+    })
+})
+
+describe('session resume', () => {
+    it('reattaches the requested persisted session without creating a new one', async () => {
+        const runtime = new AcpRuntime(config())
+        const created = vi.spyOn(AcpClient.prototype, 'newSession')
+        try {
+            const turn = await runtime.runTurn({
+                sessionId: 'app-resume',
+                acpSessionId: 'resumed-1',
+                prompt: 'hi',
+            })
+            const events: Array<Record<string, unknown>> = []
+            for await (const event of turn.events) events.push(event as Record<string, unknown>)
+            const result = await turn.result
+
+            expect(result).toMatchObject({ ok: true, acpSessionId: 'resumed-1' })
+            expect(events.find((event) => event.type === 'session')).toMatchObject({
+                acpSessionId: 'resumed-1',
+                sessionId: 'app-resume',
+            })
+            // Text deltas only route when byAcp was keyed by the resumed id.
+            expect(events.some((event) => event.type === 'text_delta')).toBe(true)
+            expect(created).not.toHaveBeenCalled()
+            expect(runtime.sessionsCount).toBe(1)
+        } finally {
+            created.mockRestore()
+            await runtime.dispose()
+        }
+    })
+
+    it('maps the DSH resume failures onto the runtime error contract', async () => {
+        const runtime = new AcpRuntime(config())
+        try {
+            await expect(
+                runtime.runTurn({ sessionId: 'a', acpSessionId: 'wrong-cwd-1', prompt: 'hi' }),
+            ).rejects.toMatchObject({ code: 'session_cwd_mismatch', statusCode: 409 })
+            await expect(
+                runtime.runTurn({ sessionId: 'b', acpSessionId: 'missing-1', prompt: 'hi' }),
+            ).rejects.toMatchObject({ code: 'session_not_found', statusCode: 404 })
+            await expect(
+                runtime.runTurn({ sessionId: 'c', acpSessionId: 'busy-1', prompt: 'hi' }),
+            ).rejects.toMatchObject({ code: 'session_conflict', statusCode: 409 })
+            expect(runtime.sessionsCount).toBe(0)
+        } finally {
+            await runtime.dispose()
+        }
+    })
+
+    it('reports a new ACP session without an id as an upstream error', async () => {
+        const runtime = new AcpRuntime(config())
+        const created = vi
+            .spyOn(AcpClient.prototype, 'newSession')
+            .mockResolvedValue({ sessionId: '', configOptions: [] })
+        try {
+            await expect(
+                runtime.runTurn({ sessionId: 'no-id', prompt: 'hi' }),
+            ).rejects.toMatchObject({ code: 'acp_error', statusCode: 502 })
+            expect(runtime.sessionsCount).toBe(0)
+        } finally {
+            created.mockRestore()
+            await runtime.dispose()
+        }
     })
 })

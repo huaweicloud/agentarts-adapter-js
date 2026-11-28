@@ -79,9 +79,16 @@ export interface TurnRequest {
     stream?: boolean
     eventId?: string
     attempt?: number
+    /** AgentArts-side session key; the runtime entry is keyed by this. */
     sessionId: string
     prompt: string
     cwd?: string
+    /**
+     * DSH session id (the persistence key, as returned by `session/list`).
+     * When set, the runtime runs `session/resume` instead of `session/new`;
+     * the resume response carries no id, so this value is kept as-is.
+     * The cwd must match the persisted session, otherwise the turn fails 409.
+     */
     acpSessionId?: string
     mcpServers?: AcpMcpServer[]
     gateway?: GatewayConfig
@@ -93,6 +100,7 @@ export interface TurnRequest {
 
 export interface SessionEntry {
     key: string
+    /** DSH session id; used for ACP calls, event routing and prompt-file naming. */
     acpSessionId: string
     cwd: string
     mcpServers: AcpMcpServer[]

@@ -55,9 +55,26 @@ lines.on('line', (line) => {
     }
     if (message.method === 'session/list') {
         reply({
-            sessions: [{ sessionId, cwd: workspace, title: 'fake', updatedAt: new Date().toISOString() }],
+            // dsh-acp lists persisted sessions as { sessionId, cwd } only.
+            sessions: [{ sessionId, cwd: workspace }],
             nextCursor: null,
         })
+        return
+    }
+    if (message.method === 'session/resume') {
+        const id = message.params?.sessionId
+        // Mirrors dsh-acp: the response carries config options only, never the id.
+        const rejectWith = (text) =>
+            send({ jsonrpc: '2.0', id: message.id, error: { code: -32602, message: text } })
+        if (typeof id !== 'string' || id === '') return rejectWith('sessionId is required')
+        if (id.startsWith('missing-')) return rejectWith(`session is not resumable: ${id}`)
+        if (id.startsWith('busy-')) return rejectWith(`session is already active: ${id}`)
+        if (id.startsWith('wrong-cwd-')) {
+            return rejectWith(`session cwd does not match: ${message.params?.cwd}`)
+        }
+        sessionId = id
+        workspace = message.params?.cwd ?? workspace
+        reply({ configOptions: [] })
         return
     }
     if (message.method === 'session/prompt') {
