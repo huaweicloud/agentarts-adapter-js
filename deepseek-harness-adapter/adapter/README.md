@@ -9,7 +9,7 @@
 ```sh
 pnpm install --frozen-lockfile
 pnpm run build
-PORT=8080 node adapter/dist/main.js
+AGENT_SERVER_PORT=18092 node adapter/dist/main.js
 ```
 
 - `GET /ping` 反映 ACP 握手、恢复和 SDK 容量状态。全局准入上限由 `AGENTRUN_MAX_CONCURRENCY` 设置，默认 15。WS 按在途轮次占用名额。
@@ -24,9 +24,9 @@ PORT=8080 node adapter/dist/main.js
 
 | 设置 | 用途 |
 |---|---|
-| `PORT`，默认 8080 | /ag-ui、/invocations、/ws、/ping 的监听端口 |
+| `AGENT_SERVER_PORT`，默认 18092 | /ag-ui、/invocations、/ws、/ping 的监听端口（兼容旧名 `PORT`，下个版本移除）|
 | `A2A_PORT`，默认 8001 | A2A JSON-RPC、REST 和 /.well-known/agent-card.json |
-| `AGENTARTS_BIND_IP` | 监听地址。容器对外提供 A2A 时显式设为可达地址 |
+| `AGENT_SERVER_HOST`，默认 127.0.0.1 | 监听地址。容器对外提供 A2A 时显式设为可达地址（兼容旧名 `AGENTARTS_BIND_IP`/`HOST`，下个版本移除）|
 | `AGENTARTS_PROTOCOL_PUBLIC_ORIGIN` | Agent Card 中公布的 A2A 地址。本地默认对应回环端口 |
 | `AGENTARTS_PROTOCOL_STORAGE_DIR` | SDK 任务和线程存储目录，默认 .agentarts-protocol，每个目录由单一服务进程使用 |
 | `AGENTARTS_PROTOCOL_STORAGE_KEY` | 可选的 64 位十六进制存储加密密钥 |
@@ -42,7 +42,7 @@ HTTP 或 WS 携带 `eventId` 时，adapter 对同一 sessionId 和 eventId 做�
 
 创建会话时合并请求级 MCP、单网关配置和部署级 MCP。部署级 MCP 优先于同名请求配置，请求改用其他网关目标时使用请求自身凭据。子进程仅接收部署白名单和 `DSH_ACP_CHILD_ENV` 的显式覆盖，OBS 使用仅含 skills 和 user_bucket 的 metadata。`DSH_ACP_CHILD_ENV` 接受 JSON 对象中的字符串值，JSON 格式错误时启动会报告该变量名。
 
-使用记忆和 OBS 技能前按 [ACP 集成说明](../docs/ACP-INTEGRATION.md) 生成部署 profile。`memory_config.memory_user_id` 可指定记忆 actor，`AGENTARTS_MEMORY_USER_ID` 可以覆盖它。包含 `allowed_tools` 列表的部署会收到配置错误，直到 ACP 执行层可以强制应用工具白名单。
+使用记忆和 OBS 技能前按 [ACP 集成说明](../docs/ACP-INTEGRATION.md) 生成部署 profile。`memory_config.memory_user_id` 可指定记忆 actor，`AGENTARTS_MEMORY_USER_ID` 可以覆盖它。`allowed_tools` 会经 `AGENTARTS_ALLOWED_TOOLS` 透传给 `dsh-agentarts-tool-policy` 插件，在 DSH 进程内以 `tools.restrict({ allow })` 强制执行工具白名单。
 
 ## 验证
 

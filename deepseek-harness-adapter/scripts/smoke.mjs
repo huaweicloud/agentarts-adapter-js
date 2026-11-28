@@ -26,8 +26,8 @@ const headers = { authorization: 'Bearer ' + token, 'content-type': 'application
 const post = (url, body, extra = {}) => fetch(url, { method: 'POST', headers: { ...headers, ...extra },
     body: JSON.stringify(body), signal: AbortSignal.timeout(15000) })
 const child = spawn(process.execPath, [local('../adapter/dist/main.js')], {
-    cwd: dir, env: { ...process.env, AGENT_RUNTIME_TYPE: 'DSH', AGENTARTS_BIND_IP: '127.0.0.1',
-        AGENTRUN_MAX_CONCURRENCY: '2', PORT: String(main), A2A_PORT: String(a2a), DSH_AGENT_CWD: dir,
+    cwd: dir, env: { ...process.env, AGENT_RUNTIME_TYPE: 'DSH', AGENT_SERVER_HOST: '127.0.0.1',
+        AGENTRUN_MAX_CONCURRENCY: '2', AGENT_SERVER_PORT: String(main), A2A_PORT: String(a2a), DSH_AGENT_CWD: dir,
         AGENTARTS_PROTOCOL_TOKEN: token, AGENTARTS_PROTOCOL_PUBLIC_ORIGIN: rpc,
         AGENTARTS_PROTOCOL_STORAGE_DIR: dir, AGENTARTS_EVENT_STORAGE_DIR: dir,
         DSH_ACP_COMMAND: process.execPath, DSH_ACP_ARGS: JSON.stringify(local('../runtime/test/fixtures/fake-acp.mjs').replaceAll('\\', '/')),

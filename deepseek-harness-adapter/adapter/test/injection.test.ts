@@ -173,12 +173,16 @@ describe('profile rendering', () => {
       '@deepseek-ai/dsh-acp-app',
       '@agentarts/dsh-agentarts-memory',
       '@agentarts/dsh-skill-obs',
+      '@agentarts/dsh-agentarts-tool-policy',
       'agentarts-instrumentation-dsh',
     ]);
     expect(manifest.dependencies['@agentarts/dsh-agentarts-memory']).toBe(
       'file:./vendor/dsh-agentarts-memory',
     );
     expect(manifest.dependencies['@agentarts/dsh-skill-obs']).toBe('file:./vendor/dsh-skill-obs');
+    expect(manifest.dependencies['@agentarts/dsh-agentarts-tool-policy']).toBe(
+      'file:./vendor/dsh-agentarts-tool-policy',
+    );
     expect(manifest.dependencies['agentarts-instrumentation-dsh']).toBe(
       'file:./vendor/agentarts-instrumentation-dsh',
     );
@@ -190,6 +194,11 @@ describe('profile rendering', () => {
     expect(
       existsSync(
         join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-skill-obs', 'index.js'),
+      ),
+    ).toBe(true);
+    expect(
+      existsSync(
+        join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-agentarts-tool-policy', 'index.js'),
       ),
     ).toBe(true);
     expect(

@@ -12,13 +12,13 @@ export async function loadHostedDshConfig(
 
     const childEnvOverrides = parseAcpChildEnv(env.DSH_ACP_CHILD_ENV)
     const config = loadAdapterConfig({ env })
-    if (config.allowedTools !== null) {
-        throw new Error('agent_metadata.allowed_tools requires a supported DSH tool policy')
-    }
 
     const credentials = await resolveDeploymentCredentials(config, provider)
     const childEnv = buildChildEnv(config, env, credentials)
     childEnv.agent_metadata = JSON.stringify({ skills: config.skills, user_bucket: config.metadata.user_bucket })
+    if (config.allowedTools !== null) {
+        childEnv.AGENTARTS_ALLOWED_TOOLS = JSON.stringify(config.allowedTools)
+    }
 
     const deployedServers = config.mcps.map(mcp => ({
         name: mcp.serverName,

@@ -132,6 +132,11 @@ const HOST_PLUGINS: readonly HostPlugin[] = [
     withDependencies: true,
   },
   {
+    package: '@agentarts/dsh-agentarts-tool-policy',
+    vendor: 'vendor/dsh-agentarts-tool-policy',
+    source: '../../plugins/dsh-agentarts-tool-policy/',
+  },
+  {
     // Vendored from the upstream release tarball; see plugins/agentarts-instrumentation-dsh/VENDORED.md.
     package: 'agentarts-instrumentation-dsh',
     vendor: 'vendor/agentarts-instrumentation-dsh',

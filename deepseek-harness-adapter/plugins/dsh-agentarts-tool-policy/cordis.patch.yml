@@ -1,0 +1,13 @@
+# dsh-agentarts-tool-policy bundle layer.
+#
+# The authoritative whitelist comes from the environment the Adapter injects:
+#   AGENTARTS_ALLOWED_TOOLS = '["read","read_image",...]'   (JSON array of tool names)
+#
+# `allow` below is only a local fallback; the environment wins whenever it is set.
+# An empty or missing list applies no restriction.
+- insert:
+    - id: dsh-agentarts-tool-policy
+      name: '@agentarts/dsh-agentarts-tool-policy'
+      config:
+        allowEnv: AGENTARTS_ALLOWED_TOOLS
+        allow: []
