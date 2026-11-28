@@ -242,7 +242,7 @@ sequenceDiagram
 | --- | --- | --- |
 | 参数校验 | `invocation-handler.ts · normalizePayload` | `prompt` 缺失、`timeoutMs` 非正数 → 400 `invalid_request`（NaN 会被 `setTimeout` 当 0，故前置拦截） |
 | 入队 | `runtime.ts · acquire` | `disposed` → 503 `shutting_down`；排队超过 `queueTimeoutMs` → 503 `queue_timeout`；`signal` 已 abort → 499 `cancelled` |
-| 开会话 | `runtime.ts · openSession` | 同 key 但 `cwd` 变化 / `acpSessionId` 已被别的 key 占用 → 409；会话仍在隔离清理中 → 503 `session_unavailable`；Gateway 解析失败 → 400/404/502 |
+| 开会话 | `runtime.ts · openSession` | 同 key 但 `cwd` 变化 / `acpSessionId` 已被别的 key 占用 → 409；会话仍在隔离清理中 → 503 `session_unavailable`；resume 时 cwd 不一致 → 409、会话不可恢复 → 404、会话仍激活 → 409；`session/new` 未返回 id → 502；Gateway 解析失败 → 400/404/502 |
 | 提示词写入 | `runtime.ts · PromptRun.start` | 超 256KB / 空串 / 非法模式 → 400，经 `error` 事件返回 |
 | 回合执行 | `runtime.ts · PromptRun.start` | 回合超时 → 退役该 ACP 会话 → `prompt_timeout`(504)；事件预算溢出 → `output_limit`(503)；缺少 `stopReason` → 502；cancel → `cancelled`(499) |
 | 结算 | `runtime.ts · PromptRun.start` 的 `finally` | 清 timer、`settled`、删提示词文件、更新 `lastUsedAt`、释放串行闸门 |
@@ -259,6 +259,7 @@ sequenceDiagram
 
 - **串行与配额**：`acquire()` 用「每会话等待者队列 + 移交令牌」保证同 `sessionId` 同时只有一个回合；排队超过 `queueTimeoutMs`（默认 60s）→ 503 `queue_timeout`，等待期间 `signal` abort → 499 `cancelled`；先到先服务，取消者不会插队。
 - **会话复用**：命中 `sessions` 且 `cwd` 一致即复用，事件里 `reused: true`；否则 `session/new`（或 `session/resume`，当请求带 `acpSessionId`）。请求的 MCP server 会与 Gateway 解析结果、部署级 `AGENTRUN_ACP_MCP_SERVERS` 按名字合并。
+- **恢复会话（resume）**：请求带 `acpSessionId` 时走 `session/resume`。ACP 的 `ResumeSessionResponse` **只有 `configOptions`、没有 sessionId**，因此运行时沿用请求里传入的 id（它是 DSH 的持久化主键）。DSH 侧四道前置条件映射为：cwd 与持久化 header 不一致 → 409 `session_cwd_mismatch`；会话不存在或 origin 为 subagent → 404 `session_not_found`；会话仍处于活动状态 → 409 `session_conflict`；成功则继续用 `configOptions` 应用模型配置。`session/new` 若未返回 id，则按上游异常 502 `acp_error` 处理，不会落成 `undefined`。
 - **模型应用**：新建会话后按 `session/new` 返回的 `configOptions` 选中模型。`rc.3` 把 provider+model 编成一个不透明选择值，因此按 `[provider, model]` 路由匹配（provider 缺省依次尝试 `agentarts-model`、`deepseek-official`）；匹配不到直接 502 `model_unavailable`，不会静默跑错模型。`DSH_ACP_REASONING_EFFORT` 直传。
 - **会话退役（quarantine）**：`retireSession()` 先把入口标记 `quarantined` 再 `session/close`，成功后删除本地映射；关闭失败则保持隔离，后续 `runTurn` 直接 503 `session_unavailable`，避免复用状态可疑的会话。回合超时也会走退役。
 - **TTL 淘汰**：`prune()` 在开会话成功/失败路径触发，只淘汰「无进行中回合且空闲超过 `sessionTtlMs`」的条目，并同步清 `byAcp` 与提示词文件。
@@ -403,7 +404,7 @@ export type * from './types.js'
 | `eventId` / `attempt` | string / number | 事件标识与轮次，透传到 `TurnRequest`（供上层关联重试） |
 | `stream` | boolean | 默认 `true`；`false` 走单次 JSON |
 | `cwd` | string | 会话工作区，默认 `DSH_AGENT_CWD`/`DSH_ACP_CWD`/`process.cwd()`；同一 `sessionId` 变更 cwd → 409 |
-| `acpSessionId` | string | 指定后走 `session/resume` 而非 `session/new` |
+| `acpSessionId` | string | DSH 会话 id（持久化主键，可由 `list` 获得）。指定后走 `session/resume` 而非 `session/new`；响应不回 id，运行时沿用该值；`cwd` 必须与原会话一致，否则 409 |
 | `mcpServers` | array | 见 `normalizeMcpServers`；`sse` 类型被拒 |
 | `gateway` | object | 请求级 Gateway 覆盖（含凭据时不复用缓存） |
 | `systemPrompt` / `systemPromptMode` | string | 覆盖本回合提示词与模式 |
@@ -434,7 +435,7 @@ export type * from './types.js'
 | 方向 | 方法 | 用途 |
 | --- | --- | --- |
 | client → agent | `initialize` | `protocolVersion: 1`，声明无 fs/terminal 能力 |
-| client → agent | `session/new` / `session/resume` | 建/恢复会话，带 `cwd` + `mcpServers` |
+| client → agent | `session/new` / `session/resume` | 建/恢复会话，带 `cwd` + `mcpServers`；`resume` 的响应仅含 `configOptions`（id 沿用请求值），并要求 cwd 与持久化会话一致、会话未激活 |
 | client → agent | `session/list` | 管理动作 `list` |
 | client → agent | `session/set_config_option` | model / reasoning_effort / 任意 configId |
 | client → agent | `session/prompt` | 回合主体，`prompt:[{type:'text'}]`，无请求超时 |
@@ -543,7 +544,7 @@ export type * from './types.js'
 | `gateway_target_unavailable` | 400 / 502 | 缺 `mcpUrl`/`gatewayId`（400）、控制面查询失败（502） |
 | `gateway_target_not_found` | 404 | 按 `targetName` 未匹配到目标 |
 | `gateway_target_endpoint_missing` | 502 | 目标结构里找不到端点字段 |
-| `session_not_found` | 404 | `set_config` 传了未知会话 |
+| `session_not_found` | 404 | `set_config` 传了未知会话；或 `acpSessionId` 不可恢复（不存在 / origin 为 subagent） |
 | `session_cwd_mismatch` | 409 | 同 `sessionId` 换 `cwd` |
 | `session_conflict` | 409 | 请求的 `acpSessionId` 已被别的会话占用 |
 | `session_unavailable` | 503 | 会话正在退役/已被关闭（`quarantined`） |
@@ -587,7 +588,7 @@ export type * from './types.js'
 
 | 文件 | 用例数 | 覆盖点 |
 | --- | --- | --- |
-| `config.test.ts` | 7 | 默认 4 个 patch（token / system-prompt / skills / sessions）及关闭 token 时的顺序、sessions 三级优先级求值、skills 挂载求值、显式 `DSH_ACP_ARGS` 不被改写 |
+| `config.test.ts` | 8 | 默认 4 个 patch（token / system-prompt / skills / sessions）及关闭 token 时的顺序、sessions 三级优先级求值、skills 挂载求值、显式 `DSH_ACP_ARGS` 不被改写 |
 | `gateway.test.ts` | 18 | API Key → `Authorization: Bearer`、SSE 目标走 stdio 桥并透传头、嵌套端点提取、凭据覆盖与 TTL 缓存、控制面按名选目标/鉴权头复用、404/502/400 错误、MCP server 归一化/合并/脱敏 |
 | `invocation.test.ts` | 9 | SSE 可迭代 + token 帧数、`stream:false` JSON、`list/close/cancel/set_config` 管理动作、非法 `timeoutMs` → 400、`session_not_found` → 404、`dispose` 后 503、真实 HTTP SSE 端到端 |
 | `permission.test.ts` | 11 | allow/reject/cancel 策略、回调成功/裸 decision/HTTP 错误/超时、无回调 fallback、已 abort、无匹配 kind 选首项、`permissionOutcome` 序列化 |
@@ -595,11 +596,11 @@ export type * from './types.js'
 | `async-queue.test.ts` | 4 | 大事件直投、超大事件替换为提示帧、`fail()` 拒绝等待者与后续迭代、`end()` 后忽略 push、禁用队列不缓存 |
 | `metadata.test.ts` | 3 | `DSH_ACP_CHILD_ENV` 非法输入、托管元数据映射到 model/persona、平台凭证不进子进程、并发上限回退 |
 | `runtime.test.ts` | 9 | token 流 + 提交文本为最终 output、会话复用、FIFO 与 abort、排队超时、非响应 prompt 退役、事件预算与 `output_limit`、Gateway 发现期取消、模型路由与部署级 MCP |
-| `runtime-management.test.ts` | 6 | `list`、`close`（重复关闭）、`setConfig`（全字段 + 404）、`cancelSession`、cwd 冲突 409、dispose 幂等与 503 |
+| `runtime-management.test.ts` | 9 | `list`、`close`（重复关闭）、`setConfig`（全字段 + 404）、`cancelSession`、cwd 冲突 409、dispose 幂等与 503；resume 沿用请求 id 且不建新会话、resume 失败映射（409/404/409）、缺 id → 502 |
 | `index.test.ts` | 1 | 包入口可导入 |
-| **合计** | **74** | 10 个文件全部通过 |
+| **合计** | **78** | 10 个文件全部通过 |
 
-未被单测覆盖的关键路径（供补充用例参考）：子进程崩溃后的 `ensureClient` 竞态重建、`text_correction` 对账、`replace-all` 提示词、`session/resume`、`prune` 的实际淘汰、`mcp-sse-bridge.mjs` 的 SSE 中继。
+未被单测覆盖的关键路径（供补充用例参考）：子进程崩溃后的 `ensureClient` 竞态重建、`text_correction` 对账、`replace-all` 提示词、`prune` 的实际淘汰、`mcp-sse-bridge.mjs` 的 SSE 中继。
 
 ---
 

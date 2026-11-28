@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { AcpClient } from './acp-client.js'
+import { AcpClient, type AcpSessionInfo } from './acp-client.js'
 import { AsyncQueue } from './async-queue.js'
 import { RuntimeError, toRuntimeError } from './errors.js'
 import {
@@ -40,6 +40,26 @@ async function waitForSetup<T>(work: Promise<T>, signal?: AbortSignal): Promise<
     })
     try { return await Promise.race([work, cancelled]) }
     finally { signal.removeEventListener('abort', abort) }
+}
+
+/**
+ * Map the DSH `session/resume` failures onto the runtime's HTTP contract.
+ * DSH reports them as JSON-RPC invalid-params with a stable message prefix.
+ */
+function resumeError(error: unknown): Error {
+    const message = error instanceof Error ? error.message : String(error)
+    const wrap = (text: string, code: string, statusCode: number): RuntimeError =>
+        new RuntimeError(text, { code, statusCode, cause: error })
+    if (/session cwd does not match/i.test(message)) {
+        return wrap('session cwd mismatch', 'session_cwd_mismatch', 409)
+    }
+    if (/session is not resumable/i.test(message)) {
+        return wrap('session is not resumable', 'session_not_found', 404)
+    }
+    if (/session is already active/i.test(message)) {
+        return wrap('session is already active', 'session_conflict', 409)
+    }
+    return error instanceof Error ? error : new Error(message)
 }
 
 interface TextState {
@@ -90,7 +110,7 @@ export class AcpRuntime {
 
     /** List resumable DSH sessions, optionally scoped to a workspace. */
     async listSessions(input: { cwd?: string; cursor?: string } = {}): Promise<{
-        sessions: Array<{ sessionId: string; cwd?: string; title?: string; updatedAt?: string }>
+        sessions: AcpSessionInfo[]
         nextCursor?: string | null
     }> {
         const client = await this.ensureClient()
@@ -353,23 +373,40 @@ export class AcpRuntime {
         }
 
         if (signal?.aborted) throw cancelledBeforeStart()
-        let info: { sessionId: string; configOptions?: unknown }
+        let acpSessionId: string
+        let configOptions: unknown
         if (request.acpSessionId !== undefined) {
-            info = await client.resumeSession({
-                sessionId: request.acpSessionId,
+            // `session/resume` only answers with config options: the DSH session id
+            // stays the one the caller passed (it is the persistence key).
+            const resumed = await client
+                .resumeSession({
+                    sessionId: request.acpSessionId,
+                    cwd,
+                    mcpServers: mcpServers as unknown as Record<string, unknown>[],
+                })
+                .catch((error: unknown) => {
+                    throw resumeError(error)
+                })
+            acpSessionId = request.acpSessionId
+            configOptions = resumed.configOptions
+        } else {
+            const created = await client.newSession({
                 cwd,
                 mcpServers: mcpServers as unknown as Record<string, unknown>[],
             })
-        } else {
-            info = await client.newSession({
-                cwd,
-                mcpServers: mcpServers as unknown as Record<string, unknown>[],
+            acpSessionId = created.sessionId
+            configOptions = created.configOptions
+        }
+        if (typeof acpSessionId !== 'string' || acpSessionId === '') {
+            throw new RuntimeError('ACP did not return a session id', {
+                code: 'acp_error',
+                statusCode: 502,
             })
         }
 
         const entry: SessionEntry = {
             key: request.sessionId,
-            acpSessionId: info.sessionId,
+            acpSessionId,
             cwd,
             mcpServers,
             createdAt: Date.now(),
@@ -377,7 +414,7 @@ export class AcpRuntime {
         }
         try {
             if (signal?.aborted) throw cancelledBeforeStart()
-            await this.applyModelConfig(client, entry, info.configOptions)
+            await this.applyModelConfig(client, entry, configOptions)
             if (signal?.aborted) throw cancelledBeforeStart()
         } catch (error) {
             await client.closeSession(entry.acpSessionId).catch(() => {})

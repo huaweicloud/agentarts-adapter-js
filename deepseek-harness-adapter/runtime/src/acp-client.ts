@@ -22,10 +22,9 @@ export interface AcpClientOptions {
 }
 
 export interface AcpSessionInfo {
+    /** DSH session id (also the persistence key), not the AgentArts runtime key. */
     sessionId: string
     cwd?: string
-    title?: string
-    updatedAt?: string
 }
 
 /**
@@ -157,12 +156,14 @@ export class AcpClient {
         sessionId: string
         cwd: string
         mcpServers?: JsonObject[]
-    }): Promise<{ sessionId: string; configOptions?: unknown }> {
+    }): Promise<{ configOptions?: unknown }> {
+        // ACP `session/resume` answers with config options only; the id is the one
+        // the caller passed (see the ResumeSessionResponse schema).
         return (await this.request('session/resume', {
             sessionId: input.sessionId,
             cwd: input.cwd,
             mcpServers: input.mcpServers ?? [],
-        })) as { sessionId: string; configOptions?: unknown }
+        })) as { configOptions?: unknown }
     }
 
     async listSessions(input: { cwd?: string; cursor?: string } = {}): Promise<{

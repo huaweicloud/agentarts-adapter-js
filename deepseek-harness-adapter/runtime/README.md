@@ -15,6 +15,10 @@ Architecture doc: [`../docs/runtime-architecture.md`](../docs/runtime-architectu
   API Key uses `Authorization: Bearer`; legacy SSE targets use the stdio bridge.
 - Session-level system prompt: `append` / `replace` / `replace-all`, 256 KB.
 - Session management actions: `list`, `close`, `cancel`, `set_config`.
+- Session resume: pass `acpSessionId` (a `list` result, same `cwd`) to reattach a
+  persisted DSH session; the resume response carries no id, so the request value
+  is kept. Resume failures map to 409 (cwd mismatch / still active) or 404 (not
+  resumable).
 - Managed deployment metadata (`agent_metadata`): persona, model name/endpoint/key
   and gateway endpoint; an env var always wins over the metadata.
 - Skills and session-store mounts: `skills-dir.patch.yml` and
