@@ -4,7 +4,7 @@
 
 ## 当前里程碑
 
-以 `dsh acp` 常驻子进程替代 headless 一次性进程，挂载 AgentArts 记忆与 OBS 技能两个插件，`agent_metadata` 经翻译层注入 ACP 配置。
+以 `dsh acp` 常驻子进程替代 headless 一次性进程，挂载 AgentArts 记忆、OBS 技能与可观测（APM/AOM）三个插件，`agent_metadata` 经翻译层注入 ACP 配置。
 
 ## 代码落点
 
@@ -20,6 +20,7 @@
 | `runtime/`（main） | `AcpClient`（spawn `dsh acp`）、`AcpRuntime`（多 session 复用）、`applyModelConfig`（group 嵌套匹配）、`openSession`（合并部署级 `AGENTRUN_ACP_MCP_SERVERS`） |
 | `plugins/dsh-agentarts-memory` | 记忆插件（tool 模式模型主动 search；save 存短期记忆，平台自动提取长期记忆） |
 | `plugins/dsh-skill-obs` | OBS 技能插件（下载到 `<AGENTRUN_DIR>/skills`） |
+| `plugins/agentarts-instrumentation-dsh` | 可观测插件（vendor 自上游 release `agentarts-instrumentation-dsh`）：APM/AOM 同名 otel 环境变量经白名单注入 DSH 子进程 |
 
 ## 数据流
 

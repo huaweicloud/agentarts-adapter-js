@@ -70,6 +70,9 @@ importers:
 
   runtime:
     dependencies:
+      '@agentarts/harness-dsh-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@huaweicloud/agentarts-sdk':
         specifier: 0.0.7
         version: 0.0.7(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)(zod@4.6.7)

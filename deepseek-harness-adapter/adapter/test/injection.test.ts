@@ -97,6 +97,11 @@ describe('child env injection', () => {
       AGENTRUN_DATALAKE_ENDPOINT: 'https://datalake.example',
       AGENTRUN_DATALAKE_API_KEY: 'datalake-secret',
       MCP_OTHER_URL: 'https://other.example',
+      AGENTARTS_AGENTOPS_APM_TOKEN: 'apm-token',
+      AGENTARTS_AGENTOPS_APM_EXPORTER_ENDPOINT: 'https://apm.example',
+      AGENTARTS_AGENTOPS_AOM_ACCESS_CODE: 'aom-code',
+      AGENT_DOMAIN_ID: 'domain-1',
+      RESOURCE_TYPE: 'agent',
       HUAWEICLOUD_SDK_AK: 'obs-ak',
       HUAWEICLOUD_SDK_SK: 'obs-sk',
       HUAWEICLOUD_SDK_SECURITY_TOKEN: 'obs-sts',
@@ -126,10 +131,17 @@ describe('child env injection', () => {
     expect(env['MCP_GATEWAY_ID_URL']).toBe('https://mcp.example/mcp');
     expect(env['AGENTRUN_DSH_MCP_GATEWAY_ID_HEADERS']).toBe('{}');
     expect(env['AGENTRUN_DATALAKE_ENDPOINT']).toBe('https://datalake.example');
+    expect(env['agentarts_agentops_apm_token']).toBe('apm-token');
+    expect(env['agentarts_agentops_apm_exporter_endpoint']).toBe('https://apm.example');
+    expect(env['agentarts_agentops_aom_access_code']).toBe('aom-code');
+    expect(env['agent_domain_id']).toBe('domain-1');
+    expect(env['resource_type']).toBe('agent');
     expect(env['DSH_TELEMETRY_DISABLED']).toBe('1');
     expect(redactEnv(env)['DEEPSEEK_API_KEY']).toBe('<redacted>');
     expect(redactEnv(env)['HUAWEICLOUD_SDK_MEMORY_API_KEY']).toBe('<redacted>');
     expect(redactEnv(env)['AGENTRUN_DSH_MCP_GATEWAY_ID_HEADERS']).toBe('<redacted>');
+    expect(redactEnv(env)['agentarts_agentops_apm_token']).toBe('<redacted>');
+    expect(redactEnv(env)['agentarts_agentops_aom_access_code']).toBe('<redacted>');
   });
   it('keeps memory configuration and credentials out when memory_config is absent', () => {
     const config = loadAdapterConfig({
@@ -148,7 +160,7 @@ describe('child env injection', () => {
 });
 
 describe('profile rendering', () => {
-  it('materializes the ACP profile and both plugins without writing secrets', () => {
+  it('materializes the ACP profile and all vendored plugins without writing secrets', () => {
     const { config } = fixture();
     const rendered = materializeProfile(config);
     expect(spawnSync).toHaveBeenCalledWith('pnpm', expect.arrayContaining(['install', '--prod']),
@@ -161,11 +173,15 @@ describe('profile rendering', () => {
       '@deepseek-ai/dsh-acp-app',
       '@agentarts/dsh-agentarts-memory',
       '@agentarts/dsh-skill-obs',
+      'agentarts-instrumentation-dsh',
     ]);
     expect(manifest.dependencies['@agentarts/dsh-agentarts-memory']).toBe(
       'file:./vendor/dsh-agentarts-memory',
     );
     expect(manifest.dependencies['@agentarts/dsh-skill-obs']).toBe('file:./vendor/dsh-skill-obs');
+    expect(manifest.dependencies['agentarts-instrumentation-dsh']).toBe(
+      'file:./vendor/agentarts-instrumentation-dsh',
+    );
     expect(
       existsSync(
         join(rendered.profileDir, 'node_modules', '@agentarts', 'dsh-agentarts-memory', 'index.js'),
@@ -177,8 +193,29 @@ describe('profile rendering', () => {
       ),
     ).toBe(true);
     expect(
+      existsSync(
+        join(
+          rendered.profileDir,
+          'node_modules',
+          'agentarts-instrumentation-dsh',
+          'dist',
+          'plugin.mjs',
+        ),
+      ),
+    ).toBe(true);
+    expect(
       existsSync(join(rendered.profileDir, 'vendor', 'dsh-skill-obs', 'cordis.patch.yml')),
     ).toBe(true);
+    const observationPatch = readFileSync(
+      join(
+        rendered.profileDir,
+        'vendor',
+        'agentarts-instrumentation-dsh',
+        'cordis.patch.yml',
+      ),
+      'utf8',
+    );
+    expect(observationPatch).toContain('agentarts-instrumentation-dsh');
     const memoryPatch = readFileSync(
       join(rendered.profileDir, 'vendor', 'dsh-agentarts-memory', 'cordis.patch.yml'),
       'utf8',
@@ -196,6 +233,10 @@ describe('profile rendering', () => {
     expect(rendered.renderedPatch).toContain('model: "test-model"');
     expect(rendered.renderedPatch).toContain('api: openai-completions');
     expect(rendered.expected).toContainEqual({ id: 'dsh-agentarts-memory', disabled: false });
+    expect(rendered.expected).toContainEqual({
+      id: 'agentarts-instrumentation-dsh',
+      disabled: false,
+    });
     const rows = parse(rendered.renderedPatch, {
       customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => `!!js ${value}` }],
     }) as Array<Record<string, unknown>>;

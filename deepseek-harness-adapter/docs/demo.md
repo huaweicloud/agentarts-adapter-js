@@ -1,6 +1,6 @@
 # ACP 部署与验证 demo
 
-本 demo 按 **ACP 路线**验证：`dsh acp` 常驻子进程 + AgentArts 记忆与 OBS 技能两个插件 + `agent_metadata` 配置注入。构建产物的协议烟测由 `scripts/smoke.mjs` 执行。详细集成说明见 [ACP-INTEGRATION.md](ACP-INTEGRATION.md)。
+本 demo 按 **ACP 路线**验证：`dsh acp` 常驻子进程 + AgentArts 记忆、OBS 技能与可观测（APM/AOM）三个插件 + `agent_metadata` 配置注入。构建产物的协议烟测由 `scripts/smoke.mjs` 执行。详细集成说明见 [ACP-INTEGRATION.md](ACP-INTEGRATION.md)。
 
 ## 1. 准备
 
@@ -41,7 +41,7 @@ set DSH_ACP_ARGS=D:\temp\dsh-cli\node_modules\@deepseek-ai\dsh\lib\bin.js --prof
 node --input-type=module -e "import {loadAdapterConfig} from './adapter/dist/config.js'; import {materializeProfile} from './adapter/dist/patch.js'; const p = materializeProfile(loadAdapterConfig()); console.log('acp profile:', p.profileDir)"
 ```
 
-生成 `DSH_HOME/profiles/acp/`（含 `package.json`、`vendor/`、`node_modules/`、`cordis.patch.yml`）。bundles 含 `@deepseek-ai/dsh-acp-app` + 两个插件；vendor 依赖（`esdk-obs-nodejs` 等）指纹未变时跳过重复安装。
+生成 `DSH_HOME/profiles/acp/`（含 `package.json`、`vendor/`、`node_modules/`、`cordis.patch.yml`）。bundles 含 `@deepseek-ai/dsh-acp-app` + 三个插件；vendor 依赖（`esdk-obs-nodejs` 等）指纹未变时跳过重复安装。
 
 ## 4. 启动 ACP 服务
 

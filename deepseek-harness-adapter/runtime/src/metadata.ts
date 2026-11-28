@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { readInstrumentationChildEnv } from '@agentarts/harness-dsh-shared'
 
 interface Metadata {
     system_prompt?: string
@@ -43,6 +44,8 @@ export function childEnvironment(env: NodeJS.ProcessEnv): Record<string, string>
         'DSH_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'DSH_TELEMETRY_DISABLED',
         'AGENTRUN_DIR',
         'DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR'])
-    return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] =>
+    const filtered = Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] =>
         typeof entry[1] === 'string' && names.has(entry[0].toUpperCase())))
+    // Observation keys go to the child with the plugin's canonical lower-case names.
+    return { ...filtered, ...readInstrumentationChildEnv(env) }
 }
